@@ -221,7 +221,9 @@ namespace MeasurementComputing.DAQFlex
                 }
 
                 // set the default data calibration flag
-                if (m_daqDevice.GetDevCapsString("AI:FACCAL", false).Contains(PropertyValues.SUPPORTED))
+                string facCal = m_daqDevice.GetDevCapsString("AI:FACCAL", false);
+                if (facCal.Contains(PropertyValues.SUPPORTED)
+                   && !facCal.Contains(PropertyValues.NOT_SUPPORTED))
                     m_calibrateData = m_calibrateDataClone = true;
                 else
                     m_calibrateData = m_calibrateDataClone = false;
@@ -604,6 +606,11 @@ namespace MeasurementComputing.DAQFlex
                                         m_daqDevice.SendMessageDirect(msg);
                                         chMode = m_daqDevice.DriverInterface.ReadStringDirect();
                                         chMode = MessageTranslator.GetPropertyValue(chMode);
+                                        if (!supportedChannelModes.Contains(chMode)){
+                                           m_daqDevice.SendMessageDirect(Messages.AI_CHMODE_QUERY);
+                                           chMode = m_daqDevice.DriverInterface.ReadStringDirect();
+                                           chMode = MessageTranslator.GetPropertyValue(chMode);
+                                           }
                                     }
                                 }
 
@@ -3038,6 +3045,11 @@ namespace MeasurementComputing.DAQFlex
             if (messageType == DaqComponents.AI && message.Contains(DaqProperties.CHMODE) && message.Contains(Constants.EQUAL_SIGN))
             {
                 m_channelCount = (int)m_daqDevice.GetDevCapsValue("AI:CHANNELS");
+                double queueDepth = m_daqDevice.GetDevCapsValue("AISCAN:QUEUELEN");
+
+                // if supported set the queue depth
+                if (!Double.IsNaN(queueDepth))
+                   m_queueDepth = (int)queueDepth;
 
                 if (m_channelCount == m_maxChannels)
                 {

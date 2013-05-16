@@ -296,7 +296,9 @@ namespace MeasurementComputing.DAQFlex
 #if ! WindowsCE
         private void OnApplicationExit(object sender, EventArgs e)
         {
-            ShutDownDevice();
+            if (Environment.OSVersion.Platform != PlatformID.Unix)
+                ShutDownDevice();
+
             DaqDeviceManager.ReleaseDevice(this);
         }
 #endif
@@ -1127,8 +1129,10 @@ namespace MeasurementComputing.DAQFlex
                 if (errorCode == ErrorCodes.NoErrors)
                     m_compressedDeviceCaps = ReadDeviceCaps();
 
+                uint lengthRead = BitConverter.ToUInt32(m_compressedDeviceCaps, m_compressedDeviceCaps.Length - sizeof(uint));
+                uint expectedLength = BitConverter.ToUInt32(m_defaultDevCapsImage, m_defaultDevCapsImage.Length - sizeof(uint));
 
-                if (m_compressedDeviceCaps == null)
+                if (m_compressedDeviceCaps == null || lengthRead != expectedLength)
                     m_compressedDeviceCaps = m_defaultDevCapsImage;
 
                 if (m_compressedDeviceCaps == null)

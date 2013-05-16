@@ -166,20 +166,23 @@ namespace MeasurementComputing.DAQFlex
             m_totalNumberOfInputBytesRequested = totalNumberOfBytes;
 
             m_completedBulkInRequestBuffers.Clear();
-
+            
+            //For the 1208FS/1408FS, packets get mixed up at high rates in SINGLEIO mode. So,
+            // only allow 1 packet to be in process
+            int maxWorkingInputRequests = (transferSize==2 ? 2 : 8);
             if (m_criticalParams.InputSampleMode == SampleMode.Finite)
             {
-                m_numberOfWorkingInputRequests = Math.Min(8, Math.Max(1, totalNumberOfBytes / transferSize));
+               m_numberOfWorkingInputRequests = Math.Min(maxWorkingInputRequests, Math.Max(1, totalNumberOfBytes / transferSize));
 
                 //if (m_criticalParams.InputScanRate >= 10000 && m_numberOfWorkingInputRequests < 4)
-                //    m_numberOfWorkingInputRequests = 4;
+                //    m_numberOfWorkingInputRequests = 4;  
 
                 m_numberOfQueuedInputRequests = Math.Max(1, m_numberOfWorkingInputRequests / 2);
             }
             else
             {
-                m_numberOfWorkingInputRequests = 8;
-                m_numberOfQueuedInputRequests = 4;
+               m_numberOfWorkingInputRequests = maxWorkingInputRequests;
+               m_numberOfQueuedInputRequests =  Math.Max(1,maxWorkingInputRequests/2);
             }
 
             if (m_criticalParams.InputTransferMode == TransferMode.SingleIO)

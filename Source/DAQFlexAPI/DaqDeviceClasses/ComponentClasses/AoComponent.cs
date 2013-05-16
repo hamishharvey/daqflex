@@ -134,7 +134,9 @@ namespace MeasurementComputing.DAQFlex
                 m_ranges = new string[m_maxChannels];
 
                 // set the calibrate data flag if factory cal is supported
-                if (m_daqDevice.GetDevCapsString("AO:FACCAL", false).Contains(DevCapValues.S))
+                string facCal = m_daqDevice.GetDevCapsString("AO:FACCAL", false);
+                if (facCal.Contains(PropertyValues.SUPPORTED)                  
+                    && !facCal.Contains(PropertyValues.NOT_SUPPORTED))
                     m_calibrateData = m_calibrateDataClone = true;
                 else
                     m_calibrateData = m_calibrateDataClone = false;
@@ -146,6 +148,7 @@ namespace MeasurementComputing.DAQFlex
                 if (m_aoScanSupported)
                 {
                     // get the min/max input scan rates
+                    m_maxScanThroughput = m_daqDevice.SendMessage("@AOSCAN:MAXSCANTHRUPUT").ToValue();
                     m_maxScanRate = m_daqDevice.SendMessage("@AOSCAN:MAXSCANRATE").ToValue();
                     m_minScanRate = m_daqDevice.SendMessage("@AOSCAN:MINSCANRATE").ToValue();
 
@@ -234,7 +237,8 @@ namespace MeasurementComputing.DAQFlex
                 messages.Add("AO:SCALE=*");
                 messages.Add("AO{*}:VALUE=*");
 
-                if (facCal.Contains(PropertyValues.SUPPORTED))
+                if (facCal.Contains(PropertyValues.SUPPORTED)
+                  && !facCal.Contains(PropertyValues.NOT_SUPPORTED))
                 {
                     messages.Add("AO:CAL=*");
                     messages.Add("?AO:CAL");
@@ -246,7 +250,8 @@ namespace MeasurementComputing.DAQFlex
                 messages.Add("?AO:SCALE");
                 messages.Add("?AO{*}:RANGE");
 
-                if (facCal.Contains(PropertyValues.SUPPORTED))
+                if (facCal.Contains(PropertyValues.SUPPORTED)
+                  && !facCal.Contains(PropertyValues.NOT_SUPPORTED))
                 {
                     messages.Add("?AO{*}:SLOPE");
                     messages.Add("?AO{*}:OFFSET");
@@ -290,7 +295,8 @@ namespace MeasurementComputing.DAQFlex
                     messages.Add("AOSCAN:EXTPACER=*");
                 }
 
-                if (facCal.Contains(PropertyValues.SUPPORTED))
+                if (facCal.Contains(PropertyValues.SUPPORTED)
+                  && !facCal.Contains(PropertyValues.NOT_SUPPORTED))
                 {
                     messages.Add("AOSCAN:CAL=*");
                     messages.Add("?AOSCAN:CAL");

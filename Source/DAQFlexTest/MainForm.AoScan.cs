@@ -12,6 +12,7 @@ namespace MeasurementComputing.DAQFlex.Test
         private int m_lowAoChannel;
         private int m_highAoChannel;
         private bool m_stopAoScan;
+        private string m_status;
 
         //=================================================================================
         /// <summary>
@@ -111,7 +112,7 @@ namespace MeasurementComputing.DAQFlex.Test
                     if (message.Contains("STOP"))
                         m_stopAoScan = true;
 
-                    statusLabel.Text = "Success";
+                    statusLabel.Text = m_status;
                 }
                 catch (Exception ex)
                 {
@@ -173,15 +174,15 @@ namespace MeasurementComputing.DAQFlex.Test
         //===============================================================================
         private void ProcessAOutScan()
         {
-            string status = m_daqDevice.SendMessage("?AOSCAN:STATUS").ToString();
+            m_status = m_daqDevice.SendMessage("?AOSCAN:STATUS").ToString();
             string count;
 
-            while (!m_stopAoScan && status.Contains("RUNNING"))
+            while (!m_stopAoScan && m_status.Contains("RUNNING"))
             {
-                status = m_daqDevice.SendMessage("?AOSCAN:STATUS").ToString();
+                m_status = m_daqDevice.SendMessage("?AOSCAN:STATUS").ToString();
                 count = m_daqDevice.SendMessage("?AOSCAN:COUNT").ToString();
 
-                statusLabel.Text = String.Format("{0} : {1}", status, count);
+                statusLabel.Text = String.Format("{0} : {1}", m_status, count);
 
                 Application.DoEvents();
             }

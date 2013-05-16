@@ -86,6 +86,14 @@ namespace MeasurementComputing.DAQFlex
         {
             // get the current channel mode
             string msg;
+            string response;
+            string defaultMode;
+            string defaultRange;
+
+            msg = Messages.AI_CHMODE_QUERY;
+            m_daqDevice.SendMessageDirect(msg);
+            response = m_daqDevice.DriverInterface.ReadStringDirect();
+            defaultMode = MessageTranslator.GetPropertyValue(response);
 
             // set the device to SE mode 
             msg = Messages.AI_CHMODE;
@@ -128,8 +136,7 @@ namespace MeasurementComputing.DAQFlex
             msg = Messages.InsertValue(msg, PropertyValues.DIFF);
             m_daqDevice.SendMessage(msg);
 
-            string response;
-            string defaultRange;
+            
 
             // read cal coefficients for each range - 8 chs, 4 ranges (diff mode)
             for (int i = 0; i < 4; i++)
@@ -172,6 +179,10 @@ namespace MeasurementComputing.DAQFlex
                 msg = Messages.InsertValue(msg, defaultRange);
                 m_daqDevice.SendMessageDirect(msg);
             }
+
+            msg = Messages.AI_CHMODE;
+            msg = Messages.InsertValue(msg, defaultMode);
+            m_daqDevice.SendMessage(msg);
         }
 
         //===========================================================================================
@@ -414,6 +425,16 @@ namespace MeasurementComputing.DAQFlex
             return errorCode;
         }
 
+
+         internal virtual ErrorCodes SetQueueElementRange(int element, int channel, string range)
+         {
+            string msg = "AISCAN:RANGE{*/#}=" + range;
+            msg = msg.Replace("*", element.ToString());
+            msg = msg.Replace("#", channel.ToString());
+             
+            return m_daqDevice.SendMessageDirect(msg);
+         }
+         
         //================================================================================
         /// <summary>
         /// Virtual method for checking the queue channel
@@ -470,10 +491,12 @@ namespace MeasurementComputing.DAQFlex
                     defaultRange = m_daqDevice.DriverInterface.ReadStringDirect();
                     defaultRange = MessageTranslator.GetPropertyValue(defaultRange);
 
-                    msg = "AISCAN:RANGE{*/#}=" + defaultRange;
-                    msg = msg.Replace("*", element.ToString());
-                    msg = msg.Replace("#", channel.ToString());
-                    m_daqDevice.SendMessageDirect(msg);
+
+                   ErrorCodes ec=SetQueueElementRange(element, channel, defaultRange);
+                    //msg = "AISCAN:RANGE{*/#}=" + defaultRange;
+                    //msg = msg.Replace("*", element.ToString());
+                    //msg = msg.Replace("#", channel.ToString());
+                    //m_daqDevice.SendMessageDirect(msg);
 
                     // create response
                     int removeIndex = message.IndexOf(Constants.EQUAL_SIGN);
@@ -511,6 +534,11 @@ namespace MeasurementComputing.DAQFlex
             string msg;
             string range;
             string supportedRanges;
+
+            if (m_daqDevice is Usb1208FSPlus || m_daqDevice is Usb1408FSPlus)
+            {
+                return base.PreprocessQueueRange(ref message);
+            }
 
             m_daqDevice.SendMessageToDevice = false;
 

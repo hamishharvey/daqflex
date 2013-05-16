@@ -1982,7 +1982,7 @@ namespace MeasurementComputing.DAQFlex
                     }
                 }
 
-                Thread.Sleep(1);
+                Thread.Sleep(0);
             }
 
             while (!m_platformInterop.InputScanComplete())
@@ -2833,7 +2833,7 @@ namespace MeasurementComputing.DAQFlex
                 return false;
             }
 
-            if (message.Contains(DaqComponents.AISCAN) && message.Contains(DaqProperties.SAMPLES))
+            else if (message.Contains(DaqComponents.AISCAN) && message.Contains(DaqProperties.SAMPLES))
             {
                 // Finite mode
                 m_totalSamplesToReadPerChannel = MessageTranslator.GetSamples(message);
@@ -3086,7 +3086,9 @@ namespace MeasurementComputing.DAQFlex
 
                     // this is called from the same thread as ReadScanData so 
                     // we need to check for system events
-                    //Application.DoEvents();
+                    // check if this is the main UI thread
+                    if (Thread.CurrentThread.GetApartmentState() == ApartmentState.STA && !Thread.CurrentThread.IsBackground)
+                        Application.DoEvents();
                 }
 
                 m_readStopWatch.Stop();
@@ -3362,7 +3364,7 @@ namespace MeasurementComputing.DAQFlex
             }
             else if (response.Contains("UNDERRUN"))
             {
-                if (!m_stopInputScan)
+                if (!m_stopOutputScan)
                 {
                     m_errorCode = ErrorCodes.DataUnderrun;
                     m_outputScanState = ScanState.Underrun;

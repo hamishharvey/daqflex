@@ -128,16 +128,21 @@ namespace AInScan
 
             response = Device.SendMessage(msg).ToString();
 
+            // if the channel modes aren't individually programmable just get the current setting
             if (response.Contains("NOT_SUPPORTED"))
             {
-                response = Device.SendMessage("@AI:CHMODES").ToString();
+                response = Device.SendMessage("?AI:CHMODE").ToString();
+                int equalIndex = response.IndexOf("=");
+                if (equalIndex >= 0)
+                    response = response.Substring(equalIndex + 1);
             }
-
-            response = response.Substring(response.IndexOf("%") + 1);
-            int removeIndex = response.IndexOf("<");
-
-            if (removeIndex >= 0)
-                response = response.Remove(removeIndex, response.Length - removeIndex);
+            else
+            {
+                response = response.Substring(response.IndexOf("%") + 1);
+                int removeIndex = response.IndexOf("<");
+                if (removeIndex >= 0)
+                    response = response.Remove(removeIndex, response.Length - removeIndex);
+            }
 
             SupportedChannelModes = response.Split(ValueSeparator);
 

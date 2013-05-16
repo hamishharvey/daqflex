@@ -69,6 +69,8 @@
     <Compile Include="DaqDeviceClasses\ComponentClasses\MixedModeAiComponent.cs" />
     <Compile Include="DaqDeviceClasses\ComponentClasses\PulseTimer.cs" />
     <Compile Include="DaqDeviceClasses\ComponentClasses\TmrComponent.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\Usb1208FSPlus.Ai.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\Usb1208FSPlus.Ao.cs" />
     <Compile Include="DaqDeviceClasses\ComponentClasses\Usb1608FSPlus.Ai.cs" />
     <Compile Include="DaqDeviceClasses\ComponentClasses\Usb2001Tc.Ai.cs" />
     <Compile Include="DaqDeviceClasses\ComponentClasses\Usb2408.Ao.cs" />
@@ -82,6 +84,8 @@
     <Compile Include="DaqDeviceClasses\DaqDeviceFactory.cs" />
     <Compile Include="DaqDeviceClasses\ComponentClasses\IoComponent.cs" />
     <Compile Include="DaqDeviceClasses\DeviceReflector.cs" />
+    <Compile Include="DaqDeviceClasses\Usb1208FSPlus.cs" />
+    <Compile Include="DaqDeviceClasses\Usb1408FSPlus.cs" />
     <Compile Include="DaqDeviceClasses\Usb1608FSPlus.cs" />
     <Compile Include="DaqDeviceClasses\Usb2001Tc.cs" />
     <Compile Include="DaqDeviceClasses\Usb2408.cs" />

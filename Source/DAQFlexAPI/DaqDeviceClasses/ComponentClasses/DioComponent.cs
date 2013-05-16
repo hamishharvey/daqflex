@@ -328,16 +328,16 @@ namespace MeasurementComputing.DAQFlex
 
             if (config.Contains(DevCapImplementations.PROG))
                 messages.Add("DIO{*}:DIR=*");
-            else if (config.Contains(DevCapImplementations.FIXED))
-                messages.Add("?DIO{*}:DIR");
+
+            messages.Add("?DIO{*}:DIR");
 
 
             if (config.Contains(DevCapValues.BITIN) || config.Contains(DevCapValues.BITOUT))
             {
                 if (config.Contains(DevCapImplementations.PROG))
                     messages.Add("DIO{*/*}:DIR=*");
-                else if (config.Contains(DevCapImplementations.FIXED))
-                    messages.Add("?DIO{*/*}:DIR");
+
+                messages.Add("?DIO{*/*}:DIR");
             }
 
             if (config.Contains(DevCapValues.PORTOUT) || config.Contains(DevCapValues.BITOUT))
@@ -361,6 +361,7 @@ namespace MeasurementComputing.DAQFlex
             }
 
             messages.Add("?DIO");
+            messages.Add("?DIO{*}");
             messages.Add("?DIO{*}:VALUE");
             messages.Add("?DIO{*/*}:VALUE");
 

@@ -175,7 +175,7 @@ namespace AOutScan
                 // Configure the scan
                 Device.SendMessage("AOSCAN:LOWCHAN=" + lowChannelComboBox.SelectedItem.ToString());
                 Device.SendMessage("AOSCAN:HIGHCHAN=" + highChannelComboBox.SelectedItem.ToString());
-                Device.SendMessage("AOSCAN:CAL=DISABLE");
+                //Device.SendMessage("AOSCAN:CAL=DISABLE");
                 Device.SendMessage("AOSCAN:SCALE=DISABLE");
                 Device.SendMessage("AOSCAN:RATE=" + rateTextBox.Text);
 

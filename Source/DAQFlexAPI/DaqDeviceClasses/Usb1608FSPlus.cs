@@ -29,7 +29,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="deviceInfo">A device info object</param>
         //===========================================================================
         internal Usb1608FSPlus(DeviceInfo deviceInfo)
-            : base(deviceInfo, 0x000)
+            : base(deviceInfo, 0x040)
         {
             Ai = new Usb1608FSPlusAi(this, deviceInfo);
             Dio = new DioComponent(this, deviceInfo, 1);
