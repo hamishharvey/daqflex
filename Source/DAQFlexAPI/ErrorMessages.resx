@@ -1,0 +1,382 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!-- 
+    Microsoft ResX Schema 
+    
+    Version 2.0
+    
+    The primary goals of this format is to allow a simple XML format 
+    that is mostly human readable. The generation and parsing of the 
+    various data types are done through the TypeConverter classes 
+    associated with the data types.
+    
+    Example:
+    
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+    <data name="Color1" type="System.Drawing.Color, System.Drawing">Blue</data>
+    <data name="Bitmap1" mimetype="application/x-microsoft.net.object.binary.base64">
+        <value>[base64 mime encoded serialized .NET Framework object]</value>
+    </data>
+    <data name="Icon1" type="System.Drawing.Icon, System.Drawing" mimetype="application/x-microsoft.net.object.bytearray.base64">
+        <value>[base64 mime encoded string representing a byte array form of the .NET Framework object]</value>
+        <comment>This is a comment</comment>
+    </data>
+                
+    There are any number of "resheader" rows that contain simple 
+    name/value pairs.
+    
+    Each data row contains a name, and value. The row also contains a 
+    type or mimetype. Type corresponds to a .NET class that support 
+    text/value conversion through the TypeConverter architecture. 
+    Classes that don't support this are serialized and stored with the 
+    mimetype set.
+    
+    The mimetype is used for serialized objects, and tells the 
+    ResXResourceReader how to depersist the object. This is currently not 
+    extensible. For a given mimetype the value must be set accordingly:
+    
+    Note - application/x-microsoft.net.object.binary.base64 is the format 
+    that the ResXResourceWriter will generate, however the reader can 
+    read any of the formats listed below.
+    
+    mimetype: application/x-microsoft.net.object.binary.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Binary.BinaryFormatter
+            : and then encoded with base64 encoding.
+    
+    mimetype: application/x-microsoft.net.object.soap.base64
+    value   : The object must be serialized with 
+            : System.Runtime.Serialization.Formatters.Soap.SoapFormatter
+            : and then encoded with base64 encoding.
+
+    mimetype: application/x-microsoft.net.object.bytearray.base64
+    value   : The object must be serialized into a byte array 
+            : using a System.ComponentModel.TypeConverter
+            : and then encoded with base64 encoding.
+    -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="BulkInputTransfersNotSupported" xml:space="preserve">
+    <value>The device does not support bulk input transfers.</value>
+    <comment>Error</comment>
+  </data>
+  <data name="BulkOutputTransfersNotSupported" xml:space="preserve">
+    <value>The device does not support bulk output transfers.</value>
+    <comment>Error</comment>
+  </data>
+  <data name="DataOverrun" xml:space="preserve">
+    <value>A data overrun occurred.</value>
+    <comment>Warning</comment>
+  </data>
+  <data name="DataUnderrun" xml:space="preserve">
+    <value>A data underrun occurred.</value>
+    <comment>Warning</comment>
+  </data>
+  <data name="DetailBufferIsNull" xml:space="preserve">
+    <value>Error getting USB devices - detail buffer is null.</value>
+  </data>
+  <data name="DeviceHandleAlreadyCreated" xml:space="preserve">
+    <value>A handle has already been created for the specified device</value>
+  </data>
+  <data name="DeviceIsMissingSernoOrID" xml:space="preserve">
+    <value>The device is missing a serial number or user ID.</value>
+  </data>
+  <data name="DeviceNotFoundInList" xml:space="preserve">
+    <value>A device with the specified name was not found in the device list.</value>
+  </data>
+  <data name="DeviceNotInitialized" xml:space="preserve">
+    <value>The device failed to initialize.</value>
+  </data>
+  <data name="DeviceNotResponding" xml:space="preserve">
+    <value>The device is not responding.</value>
+  </data>
+  <data name="InputSamplesGreaterThanBufferSize" xml:space="preserve">
+    <value>The number of samples have been set to a value that is greater than the internal buffer size. Increase the buffer size using the BUFSIZE property.</value>
+  </data>
+  <data name="InputScanRateCannotBeZero" xml:space="preserve">
+    <value>The input scan rate cannot be zero.</value>
+  </data>
+  <data name="InputScanStartedWithZeroSamples" xml:space="preserve">
+    <value />
+  </data>
+  <data name="InvalidAiChannelSpecified" xml:space="preserve">
+    <value>An invalid analog input channel was specified.</value>
+  </data>
+  <data name="InvalidAiRange" xml:space="preserve">
+    <value>An invalid analog input range was specified.</value>
+  </data>
+  <data name="InvalidAoChannelSpecified" xml:space="preserve">
+    <value>An invalid analog output channel was specified.</value>
+  </data>
+  <data name="InvalidMessage" xml:space="preserve">
+    <value>The message sent is either invalid or not supported by the device.</value>
+  </data>
+  <data name="InvalidCtrChannelSpecified" xml:space="preserve">
+    <value>An invalid counter channel was specified.</value>
+  </data>
+  <data name="InvalidDeviceId" xml:space="preserve">
+    <value>An invalid device ID was specified.</value>
+  </data>
+  <data name="InvalidDeviceIdentifier" xml:space="preserve">
+    <value>An invalid device identifier was used to try to create a DaqDevice object.</value>
+  </data>
+  <data name="InvalidDeviceSerno" xml:space="preserve">
+    <value>An invalid device serial number was specified.</value>
+  </data>
+  <data name="InvalidDioPortSpecified" xml:space="preserve">
+    <value>An invalid digital I/O port was specified.</value>
+  </data>
+  <data name="InvalidPropertySpecified" xml:space="preserve">
+    <value>The device does not support the property specified.</value>
+  </data>
+  <data name="InvalidPropertyValueSpecified" xml:space="preserve">
+    <value>An invalid property value was specified.</value>
+  </data>
+  <data name="InvalidScanRateSpecified" xml:space="preserve">
+    <value>An invalid scan rate was specified.</value>
+  </data>
+  <data name="InvalidDACValue" xml:space="preserve">
+    <value>An invalid value for the analog output channel was specified.</value>
+  </data>
+  <data name="LibusbCouldNotBeLoaded" xml:space="preserve">
+    <value>The libusb-1.0 shared object file could not be loaded.</value>
+  </data>
+  <data name="LibUsbGetDeviceDescriptorFailed" xml:space="preserve">
+    <value>Error getting USB devices - LibUsbGetDeviceDescriptor failed.</value>
+  </data>
+  <data name="LowChannelIsGreaterThanHighChannel" xml:space="preserve">
+    <value>The low channel is greater than the high channel.</value>
+  </data>
+  <data name="MethodRequiresImplementation" xml:space="preserve">
+    <value />
+  </data>
+  <data name="NoDevicesDetected" xml:space="preserve">
+    <value>No MBD devices were detected.</value>
+  </data>
+  <data name="NoErrors" xml:space="preserve">
+    <value>No errors have occurred.</value>
+  </data>
+  <data name="NoMoreInputSamplesAvailable" xml:space="preserve">
+    <value>There are no more input samples available to read</value>
+  </data>
+  <data name="PlatformNotSupported" xml:space="preserve">
+    <value>The platform is not supported.</value>
+  </data>
+  <data name="RequiredLengthIsZero" xml:space="preserve">
+    <value>Error getting USB devices - required length is null.</value>
+  </data>
+  <data name="SetupDiEnumDeviceInterfacesFailed" xml:space="preserve">
+    <value>Error getting USB devices - SetupDiEnumDeviceInterfaces failed.</value>
+  </data>
+  <data name="SingleChannelReadInvalidForMultiChannelScan" xml:space="preserve">
+    <value>ReadMultiChannelScanData must be used for a multi channel scan</value>
+  </data>
+  <data name="ThermocoupleTypeNotSet" xml:space="preserve">
+    <value>The channel's thermocouple type has not been set.</value>
+  </data>
+  <data name="TooManySamplesRequested" xml:space="preserve">
+    <value>The number of samples requested is greater than the size of the scan buffer.</value>
+  </data>
+  <data name="IncorrectPortConfig" xml:space="preserve">
+    <value>The digital port is not configured correctly for the requested operation.</value>
+  </data>
+  <data name="LibusbCouldNotBeInitialized" xml:space="preserve">
+    <value>Libusb could not be initialized.</value>
+  </data>
+  <data name="EndOfReadBufferReached" xml:space="preserve">
+    <value>The end of the read buffer has been reached.</value>
+  </data>
+  <data name="RequestedReadSamplesGreaterThanBufferSize" xml:space="preserve">
+    <value>The number of requested samples to read is greater than the internal buffer size. Increase the buffer size using the BUFSIZE property.</value>
+  </data>
+  <data name="InvalidAiChannelMode" xml:space="preserve">
+    <value>An invalid analog input channel mode was specified.</value>
+  </data>
+  <data name="InvalidInputScanXferMode" xml:space="preserve">
+    <value>An invalid transfer mode was specified.</value>
+  </data>
+  <data name="OpenThermocouple" xml:space="preserve">
+    <value>An open thermocouple was detected on the specified channel.</value>
+  </data>
+  <data name="InputScanAlreadyInProgress" xml:space="preserve">
+    <value>An input scan is already in progress for the specified device.</value>
+  </data>
+  <data name="MaxTempRange" xml:space="preserve">
+    <value>The maximum temperature range has been reaced.</value>
+  </data>
+  <data name="MinTempRange" xml:space="preserve">
+    <value>The minimum temperature range has been reached.</value>
+  </data>
+  <data name="InvalidDeviceHandle" xml:space="preserve">
+    <value>The handle used for communicating with the device is invalid.</value>
+  </data>
+  <data name="InvalidPortConfig" xml:space="preserve">
+    <value>The direction value must be set to DIR=IN or DIR=OUT.</value>
+  </data>
+  <data name="InvalidCountValueSpecified" xml:space="preserve">
+    <value>An invalid count value was specified.</value>
+  </data>
+  <data name="InvalidConfigItem" xml:space="preserve">
+    <value>An invalid configuration item was specified.</value>
+  </data>
+  <data name="InvalidConfigType" xml:space="preserve">
+    <value>An invalid configuration type was specified.</value>
+  </data>
+  <data name="InvalidDioBitSpecified" xml:space="preserve">
+    <value>An invalid digital bit was specified.</value>
+  </data>
+  <data name="BitConfigurationNotSupported" xml:space="preserve">
+    <value>The specified port does not support bitwise configuration.</value>
+  </data>
+  <data name="DeviceIDNotSet" xml:space="preserve">
+    <value>The name format includes a device ID but the device ID is not set.</value>
+  </data>
+  <data name="InvalidComponentSpecified" xml:space="preserve">
+    <value>An invalid component name was specified.</value>
+  </data>
+  <data name="ContinuousNotCompatibleWithForeground" xml:space="preserve">
+    <value>Continuous Mode cannot be used with Foreground Mode.</value>
+  </data>
+  <data name="ErrorWritingDataToExternalInputBuffer" xml:space="preserve">
+    <value>An error occurred while writing data to the external input scan buffer.</value>
+  </data>
+  <data name="GainQueueNotSupported" xml:space="preserve">
+    <value>The device does not support gain queue.</value>
+  </data>
+  <data name="GainQueueDepthExceeded" xml:space="preserve">
+    <value>The gain queue does not support the number of elements specified.</value>
+  </data>
+  <data name="IncompatibleClockOption" xml:space="preserve">
+    <value>An incompatible clock option was specified.</value>
+  </data>
+  <data name="CallbackOperationAlreadyEnabled" xml:space="preserve">
+    <value>The callback operation has already been enabled.</value>
+  </data>
+  <data name="CallbackCountGreaterThanRequestedSamples" xml:space="preserve">
+    <value>The number of samples specified for the callback method is greater than the number of samples requested.</value>
+  </data>
+  <data name="InputScanTimeOut" xml:space="preserve">
+    <value>The input scan read operation has timed out.</value>
+  </data>
+  <data name="InternalReadBufferError" xml:space="preserve">
+    <value>An error occurred while trying to copy data to the internal read buffer.</value>
+  </data>
+  <data name="InputQueueIsEmpty" xml:space="preserve">
+    <value>The input queue is enabled but contains no elements.</value>
+  </data>
+  <data name="MessageIsEmpty" xml:space="preserve">
+    <value>The message sent is either null, nothing or empty.</value>
+  </data>
+  <data name="CallbackCountTooLarge" xml:space="preserve">
+    <value>The callback count is too large. </value>
+  </data>
+  <data name="InputScanReadCountIsZero" xml:space="preserve">
+    <value>The specified number of samples to read is zero.</value>
+  </data>
+  <data name="InvalidAiTriggerType" xml:space="preserve">
+    <value>An invalid analog input trigger type was specified.</value>
+  </data>
+  <data name="NumberOfSamplesPerChannelGreaterThanUserBufferSize" xml:space="preserve">
+    <value>The number of samples per channel is greater than length of the buffer passed to WriteScanData.</value>
+  </data>
+  <data name="OutputScanAlreadyInProgress" xml:space="preserve">
+    <value>An output scan is already in progress.</value>
+  </data>
+  <data name="CopyingDataToInternalWriteBufferFailed" xml:space="preserve">
+    <value>An error occurred while copying data to the internal read buffer.</value>
+  </data>
+  <data name="OutputBufferNullOrEmtpy" xml:space="preserve">
+    <value>The output buffer is null or empty.</value>
+  </data>
+  <data name="OutputScanTimeout" xml:space="preserve">
+    <value>The output scan write operation has timed out.</value>
+  </data>
+  <data name="NumberOfSamplesGreaterThanHalfBuffer" xml:space="preserve">
+    <value>The number of samples is greater than half the buffer size.</value>
+  </data>
+  <data name="BulkOutTransferError" xml:space="preserve">
+    <value>A bulk out transfer error occurred.</value>
+  </data>
+  <data name="InvalidOutputBufferSize" xml:space="preserve">
+    <value>An invalid output buffer size was specified.</value>
+  </data>
+  <data name="NumberOfSamplesTooLarge" xml:space="preserve">
+    <value>The number</value>
+  </data>
+  <data name="TotalNumberOfSamplesGreaterThanOutputBufferSize" xml:space="preserve">
+    <value>The total number of samples is greater than the output buffer size.</value>
+  </data>
+  <data name="DaqDeviceListNotEmpty" xml:space="preserve">
+    <value>One or more DaqDevice objects need to be released before calling GetDeviceNames.</value>
+  </data>
+  <data name="BurstIoInProgress" xml:space="preserve">
+    <value>Only the STATUS, COUNT, INDEX and STOP messages may be sent to the device while a BURSTIO scan is in progress.</value>
+  </data>
+  <data name="InvalidSampleCountForBurstIo" xml:space="preserve">
+    <value>Invalid sample count for BURSTIO transfer mode.</value>
+  </data>
+  <data name="LibusbBulkTransferInterrupted" xml:space="preserve">
+    <value>A bulk transfer was interrupted by the system.</value>
+  </data>
+</root>

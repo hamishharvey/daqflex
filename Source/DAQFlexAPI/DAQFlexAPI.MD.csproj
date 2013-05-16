@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="3.5">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>9.0.30729</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{09E05C30-4D0B-4562-8B54-3D4681913845}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>MeasurementComputing.DAQFlex</RootNamespace>
+    <TargetFrameworkVersion>v2.0</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <SignAssembly>true</SignAssembly>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CustomCommands>
+      <CustomCommands>
+        <Command type="AfterBuild" command="cp -f ${TargetDir}/DAQFlex.dll ${SolutionDir}/lib" workingdir="${TargetDir}" />
+        <Command type="AfterBuild" command="cp -f ${TargetDir}/DAQFlex.dll.mdb ${SolutionDir}/lib" workingdir="${TargetDir}" />
+      </CustomCommands>
+    </CustomCommands>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyName>DAQFlex</AssemblyName>
+    <AssemblyOriginatorKeyFile>DAQFlexAPI.snk</AssemblyOriginatorKeyFile>
+    <AssemblyKeyFile>DAQFlexAPI.snk</AssemblyKeyFile>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CustomCommands>
+      <CustomCommands>
+        <Command type="AfterBuild" command="cp -f ${TargetDir}/DAQFlex.dll ${SolutionDir}/lib" workingdir="${TargetDir}" />
+      </CustomCommands>
+    </CustomCommands>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyName>DAQFlex</AssemblyName>
+    <AssemblyOriginatorKeyFile>DAQFlexAPI.snk</AssemblyOriginatorKeyFile>
+    <AssemblyKeyFile>DAQFlexAPI.snk</AssemblyKeyFile>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'DebugMCUsb|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\DebugMCUsb\</OutputPath>
+    <DefineConstants>TRACE;DEBUG;MC_USB</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DebugType>full</DebugType>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Optimize>false</Optimize>
+    <AssemblyName>MC7000API</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="General\ConsoleWriter.cs" />
+    <Compile Include="General\Constants.cs" />
+    <Compile Include="DriverInterfaceClasses\CriticalParams.cs" />
+    <Compile Include="DaqDeviceClasses\DaqDevice.cs" />
+    <Compile Include="DaqDeviceClasses\DaqDeviceManager.cs" />
+    <Compile Include="API\DaqResponse.cs" />
+    <Compile Include="DaqDeviceClasses\DeviceInfo.cs" />
+    <Compile Include="DriverInterfaceClasses\DriverInterface.cs" />
+    <Compile Include="General\Enums.cs" />
+    <Compile Include="General\ErrorCodes.cs" />
+    <Compile Include="PlatformInteropClasses\LibUsbInterop.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="PlatformInteropClasses\PtrManager.cs" />
+    <Compile Include="PlatformInteropClasses\UsbBulkInRequest.cs" />
+    <Compile Include="PlatformInteropClasses\PlatformInterop.cs" />
+    <Compile Include="PlatformInteropClasses\WindowsUsbInterop.cs" />
+    <Compile Include="PlatformInteropClasses\WinUsbInterop.cs" />
+    <Compile Include="DaqDeviceClasses\USB7202.cs" />
+    <Compile Include="General\MessageTranslator.cs" />
+    <Compile Include="General\CallbackControl.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="General\CallbackControl.Designer.cs" />
+    <Compile Include="ErrorMessages.Designer.cs" />
+    <Compile Include="General\DaqException.cs" />
+    <Compile Include="DaqDeviceClasses\USB7204.cs" />
+    <Compile Include="DaqDeviceClasses\DaqDeviceFactory.cs" />
+    <Compile Include="DaqDeviceClasses\USB2001TC.cs" />
+    <Compile Include="General\Thermocouples.cs" />
+    <Compile Include="API\DAQFlexAPI.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\AiComponent.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\AoComponent.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\CtrComponent.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\DioComponent.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\IoComponent.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\TmrComponent.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\Usb2001Tc.Ai.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\Usb7202.Ai.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\Usb7202.Ctr.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\Usb7202.Dio.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\Usb7204.Ai.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\Usb7204.Ao.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\Usb7204.Dio.cs" />
+    <Compile Include="DaqDeviceClasses\DeviceReflector.cs" />
+    <Compile Include="PlatformInteropClasses\UsbPlatformInterop.cs" />
+    <Compile Include="PlatformInteropClasses\SynchronousUsbInterop.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+  <PropertyGroup>
+    <PostBuildEvent>cp -f "${TargetDir}/DAQFlex.dll ${SolutionDir}/lib"</PostBuildEvent>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="ErrorMessages.resx" />
+  </ItemGroup>
+</Project>
