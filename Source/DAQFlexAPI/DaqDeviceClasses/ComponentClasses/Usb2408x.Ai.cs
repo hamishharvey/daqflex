@@ -307,6 +307,7 @@ namespace MeasurementComputing.DAQFlex
             {
                 messages.Add("AISCAN:XFRMODE=*");
                 messages.Add("AISCAN:RANGE=*");
+                messages.Add("AISCAN:RANGE{*}=*");
                 messages.Add("AISCAN:HIGHCHAN=*");
                 messages.Add("AISCAN:LOWCHAN=*");
                 messages.Add("AISCAN:RATE=*");
@@ -324,6 +325,7 @@ namespace MeasurementComputing.DAQFlex
 
                 messages.Add("?AISCAN:XFRMODE");
                 messages.Add("?AISCAN:RANGE");
+                messages.Add("?AISCAN:RANGE{*}");
                 messages.Add("?AISCAN:HIGHCHAN");
                 messages.Add("?AISCAN:LOWCHAN");
                 messages.Add("?AISCAN:DEBUG");
@@ -376,6 +378,8 @@ namespace MeasurementComputing.DAQFlex
         internal override void BeginInputScan()
         {
             m_daqDevice.CriticalParams.NumberOfSamplesForSingleIO = 1;
+
+            base.BeginInputScan();
         }
 
         //===========================================================================================

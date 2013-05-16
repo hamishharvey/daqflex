@@ -514,4 +514,10 @@
   <data name="NonAscendingChannelsNotSupportedInQueue" xml:space="preserve">
     <value>Channels must be in ascending order when the analog input queue is enabled.</value>
   </data>
+  <data name="InvalidInputTransferTime" xml:space="preserve">
+    <value>The specified input transfer time is invalid. It must be between 1 mS and 5000 mS.</value>
+  </data>
+  <data name="InputBufferAllocationError" xml:space="preserve">
+    <value>An error occurred while allocating the input buffer.</value>
+  </data>
 </root>

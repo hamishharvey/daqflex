@@ -132,7 +132,8 @@ namespace MeasurementComputing.DAQFlex
                 m_supportedDevices.Add((int)DeviceIDs.Usb1608GX2AoID, DaqDeviceClassNames.USB_1608GX_2AO);
                 m_supportedDevices.Add((int)DeviceIDs.Usb2408ID, DaqDeviceClassNames.USB_2408);
                 m_supportedDevices.Add((int)DeviceIDs.Usb2408_2AoID, DaqDeviceClassNames.USB_2408_2AO);
-                m_supportedDevices.Add((int)DeviceIDs.Usb204ID, DaqDeviceClassNames.USB_204);
+                m_supportedDevices.Add((int)DeviceIDs.Usb201, DaqDeviceClassNames.USB_201);
+                m_supportedDevices.Add((int)DeviceIDs.Usb204, DaqDeviceClassNames.USB_204);
                 m_supportedDevices.Add((int)DeviceIDs.Usb1208FSPlus, DaqDeviceClassNames.USB_1208FS_PLUS);
                 m_supportedDevices.Add((int)DeviceIDs.Usb1408FSPlus, DaqDeviceClassNames.USB_1408FS_PLUS);
                 m_supportedDevices.Add((int)DeviceIDs.Usb1608FSPlus, DaqDeviceClassNames.USB_1608FS_PLUS);

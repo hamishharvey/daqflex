@@ -149,6 +149,8 @@ namespace MeasurementComputing.DAQFlex
         InputBufferCannotBeSet = 4514,
         InputBufferOverrun = 4515,
         ErrorWritingDataToExternalInputBuffer = 4516,
+        InvalidInputTransferTime = 4517,
+        InputBufferAllocationError = 4518,
 
         // Output scan errors (4600)
         OutputScanAlreadyInProgress = 4600,

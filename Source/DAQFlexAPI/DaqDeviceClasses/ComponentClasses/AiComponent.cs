@@ -936,7 +936,7 @@ namespace MeasurementComputing.DAQFlex
 
             // The DAQFlex API stores the range information for scaling data but this message is sent to the device
             // message = "AI{*}:RANGE=*"
-            if (message.Contains(DaqProperties.RANGE) && message.Contains(Constants.EQUAL_SIGN))
+            if (message.Contains(DaqProperties.RANGE))
                 return ProcessRangeMessage(ref message);
 
             if (message.Contains(DaqProperties.DATARATE) && message.Contains(Constants.EQUAL_SIGN))
@@ -1051,7 +1051,7 @@ namespace MeasurementComputing.DAQFlex
             if (message.Contains(APIMessages.AISCANBLOCKSIZE))
                 return PreprocessBlockSizeMessage(ref message);
 
-            if (message.Contains(DaqProperties.RANGE) && message.Contains(Constants.EQUAL_SIGN))
+            if (message.Contains(DaqProperties.RANGE))
                 return ProcessRangeMessage(ref message);
 
             if (message.Contains(DaqProperties.SAMPLES) && message.Contains(Constants.EQUAL_SIGN))
@@ -1122,6 +1122,18 @@ namespace MeasurementComputing.DAQFlex
 
                 return ProcessTrigMessage(ref message);
             }
+
+            // process the min sample rate query...
+            if (message.Contains(APIMessages.AISCAN_MIN_SAMPLE_RATE_QUERY))
+                return ProcessMinSampleRateQuery(message);
+
+            // process the max sample rate query...
+            if (message.Contains(APIMessages.AISCAN_MAX_SAMPLE_RATE_QUERY))
+                return ProcessMaxSampleRateQuery(message);
+
+            // process the sample dt query...
+            if (message.Contains(APIMessages.AISCAN_SAMPLE_DT_QUERY))
+                return ProcessSampleDtQuery(message);
 
             return ErrorCodes.NoErrors;
         }
@@ -1641,24 +1653,24 @@ namespace MeasurementComputing.DAQFlex
         //===========================================================================================
         internal override ErrorCodes ProcessRangeMessage(ref string message)
         {
-            string rangeValue = MessageTranslator.GetPropertyValue(message);
+            string capsKey = String.Empty;
             string supportedRanges = String.Empty;
             string channels = String.Empty;
-
+            
             if (message.Contains(DaqComponents.AISCAN))
             {
                 try
                 {
-                    string capsKey;
-
                     if (message.Contains(CurlyBraces.LEFT.ToString()) && message.Contains(CurlyBraces.RIGHT.ToString()))
                     {
                         ///////////////////////////////////////////////////////////////////////////////////
                         // Message is in the form AISCAN:RANGE{0}=BIP10V or AISCAN:RANGE{0/0}=BIP10V
+                        // or ?AISCAN:RANGE{ch} or ?AISCAN:RANGE{0/0}
                         ///////////////////////////////////////////////////////////////////////////////////
 
-                        // process a gain queue
+                        // Get the channel number, will be -1 if not found
                         int channel = MessageTranslator.GetQueueChannel(message);
+                        // Get the queue element number, will be -1 if not found
                         int element = MessageTranslator.GetQueueElement(message);
 
                         if (channel >= 0)
@@ -1677,17 +1689,27 @@ namespace MeasurementComputing.DAQFlex
                             if (channel >= chCount)
                                 return ErrorCodes.InvalidAiChannelSpecified;
 
-                            capsKey = DaqComponents.AI +
-                                        CurlyBraces.LEFT +
-                                            channel.ToString() +
-                                                CurlyBraces.RIGHT +
-                                                    Constants.PROPERTY_SEPARATOR +
-                                                        DevCapNames.RANGES;
+                            if(!message.StartsWith(Constants.QUERY.ToString())){
+                                string rangeValue = MessageTranslator.GetPropertyValue(message);
 
-                            supportedRanges = m_daqDevice.GetDevCapsString(capsKey, true);
+                                capsKey = DaqComponents.AI +
+                                            CurlyBraces.LEFT +
+                                                channel.ToString() +
+                                                    CurlyBraces.RIGHT +
+                                                        Constants.PROPERTY_SEPARATOR +
+                                                            DevCapNames.RANGES;
 
-                            if (!supportedRanges.Contains(rangeValue))
-                                return ErrorCodes.InvalidAiRange;
+                                supportedRanges = m_daqDevice.GetDevCapsString(capsKey, true);
+
+                                if (!supportedRanges.Contains(rangeValue))
+                                {
+                                    return ErrorCodes.InvalidAiRange;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            return ErrorCodes.InvalidAiChannelSpecified;
                         }
 
                         if (element >= 0)
@@ -1702,25 +1724,28 @@ namespace MeasurementComputing.DAQFlex
                         // Messsage is in the form AISCAN:RANGE=BIP10V
                         //////////////////////////////////////////////////////
 
-                        for (int i = m_daqDevice.CriticalParams.LowAiChannel; i <= m_daqDevice.CriticalParams.HighAiChannel; i++)
+                        if (!message.StartsWith(Constants.QUERY.ToString()))
                         {
-                            capsKey = DaqComponents.AI +
-                                            CurlyBraces.LEFT +
-                                                i.ToString() +
-                                                    CurlyBraces.RIGHT +
-                                                        Constants.PROPERTY_SEPARATOR +
-                                                            DevCapNames.RANGES;
+                            string rangeValue = MessageTranslator.GetPropertyValue(message);
+                            for (int i = m_daqDevice.CriticalParams.LowAiChannel; i <= m_daqDevice.CriticalParams.HighAiChannel; i++)
+                            {
+                                capsKey = DaqComponents.AI +
+                                                CurlyBraces.LEFT +
+                                                    i.ToString() +
+                                                        CurlyBraces.RIGHT +
+                                                            Constants.PROPERTY_SEPARATOR +
+                                                                DevCapNames.RANGES;
 
-                            supportedRanges = m_daqDevice.GetDevCapsString(capsKey, true);
+                                supportedRanges = m_daqDevice.GetDevCapsString(capsKey, true);
 
-                            if (!supportedRanges.Contains(rangeValue))
-                                return ErrorCodes.InvalidAiRange;
+                                if (!supportedRanges.Contains(rangeValue))
+                                    return ErrorCodes.InvalidAiRange;
+                            }
                         }
                     }
                 }
                 catch (Exception)
                 {
-                    System.Diagnostics.Debug.Assert(false, "Invalid range");
                     return ErrorCodes.InvalidAiRange;
                 }
             }
@@ -1739,19 +1764,37 @@ namespace MeasurementComputing.DAQFlex
                 {
                     if (channel >= 0)
                     {
-                        string capsKey = DaqComponents.AI +
-                                            CurlyBraces.LEFT +
-                                                channel.ToString() +
-                                                    CurlyBraces.RIGHT +
-                                                        Constants.PROPERTY_SEPARATOR +
-                                                            DevCapNames.RANGES;
+                        capsKey = DaqComponents.AI +
+                                        Constants.PROPERTY_SEPARATOR +
+                                            DevCapNames.CHANNELS;
 
-                        supportedRanges = m_daqDevice.GetDevCapsString(capsKey, true);
+                        channels = m_daqDevice.GetDevCapsString(capsKey, true);
+                        channels = MessageTranslator.GetReflectionValue(channels);
 
-                        m_ranges[channel] = message;
+                        int chCount = 0;
 
-                        if (!supportedRanges.Contains(rangeValue))
-                            return ErrorCodes.InvalidAiRange;
+                        PlatformParser.TryParse(channels, out chCount);
+
+                        if (channel >= chCount)
+                            return ErrorCodes.InvalidAiChannelSpecified;
+
+                        if (!message.StartsWith(Constants.QUERY.ToString()))
+                        {
+                            string rangeValue = MessageTranslator.GetPropertyValue(message);
+                            capsKey = DaqComponents.AI +
+                                                CurlyBraces.LEFT +
+                                                    channel.ToString() +
+                                                        CurlyBraces.RIGHT +
+                                                            Constants.PROPERTY_SEPARATOR +
+                                                                DevCapNames.RANGES;
+
+                            supportedRanges = m_daqDevice.GetDevCapsString(capsKey, true);
+
+                            if (!supportedRanges.Contains(rangeValue))
+                                return ErrorCodes.InvalidAiRange;
+
+                            m_ranges[channel] = message;
+                        }
                     }
                     else
                     {
@@ -1760,7 +1803,6 @@ namespace MeasurementComputing.DAQFlex
                 }
                 catch (Exception)
                 {
-                    System.Diagnostics.Debug.Assert(false, "Invalid range");
                     return ErrorCodes.InvalidAiRange;
                 }
             }
@@ -2018,6 +2060,12 @@ namespace MeasurementComputing.DAQFlex
                 double rate;
                 PlatformParser.TryParse(MessageTranslator.GetPropertyValue(message), out rate);
 
+                //Do not validate the scan rate if the external pacer is enabled
+                if (m_daqDevice.CriticalParams.AiExtPacer == true)
+                {
+                    return ErrorCodes.NoErrors;
+                }
+
                 if (m_daqDevice.CriticalParams.InputTransferMode == TransferMode.BurstIO)
                 {
                     if (rate > m_maxBurstThroughput || rate < m_minBurstRate)
@@ -2035,6 +2083,81 @@ namespace MeasurementComputing.DAQFlex
             }
            
             return errorCode;
+        }
+
+        //=====================================================================================================
+        /// <summary>
+        /// Overriden to return min ai scan rate
+        /// </summary>
+        /// <param name="message"></param>
+        /// <returns></returns>
+        //=====================================================================================================
+        internal override ErrorCodes ProcessMinSampleRateQuery(string message)
+        {
+            // get the max rate...
+            double minRate = RateCalculator.GetMinAiScanRate(m_daqDevice);
+
+            // construct a response
+            m_daqDevice.ApiResponse = new DaqResponse(APIMessages.AISCAN_MIN_SAMPLE_RATE_QUERY.Remove(0, 1) +
+                                                        Constants.EQUAL_SIGN +
+                                                            minRate.ToString(),
+                                                                minRate);
+
+            // set this flag to false so the message is not sent to the device...
+            m_daqDevice.SendMessageToDevice = false;
+
+            // no errors should be generated here
+            return ErrorCodes.NoErrors;
+        }
+
+        //=====================================================================================================
+        /// <summary>
+        /// Overriden to return max ai scan rate
+        /// </summary>
+        /// <param name="message"></param>
+        /// <returns></returns>
+        //=====================================================================================================
+        internal override ErrorCodes ProcessMaxSampleRateQuery(string message)
+        {
+                // get the max rate...
+            double maxRate = RateCalculator.GetMaxAiScanRate(m_daqDevice);
+
+                // construct a response
+            m_daqDevice.ApiResponse = new DaqResponse(APIMessages.AISCAN_MAX_SAMPLE_RATE_QUERY.Remove(0, 1) +
+                                                        Constants.EQUAL_SIGN +
+                                                            maxRate.ToString(),
+                                                                maxRate);
+
+                // set this flag to false so the message is not sent to the device...
+            m_daqDevice.SendMessageToDevice = false;
+
+                // no errors should be generated here
+            return ErrorCodes.NoErrors;                        
+        }
+
+        //=====================================================================================================
+        /// <summary>
+        /// Overridden to return the ai sample dt
+        /// </summary>
+        /// <param name="message"></param>
+        /// <returns></returns>
+        //=====================================================================================================
+        internal override ErrorCodes ProcessSampleDtQuery(string message)
+        {
+                // get the sample dt...
+            double sampleDt = RateCalculator.GetSampleDt(m_daqDevice);
+
+                // construct a response
+            m_daqDevice.ApiResponse = new DaqResponse(APIMessages.AISCAN_SAMPLE_DT_QUERY.Remove(0, 1) +
+                                                        Constants.EQUAL_SIGN +
+                                                            sampleDt.ToString(),
+                                                                sampleDt);
+
+                // set this flag to false so the message is not sent to the device...
+            m_daqDevice.SendMessageToDevice = false;
+
+                // no errors should be generated here
+            return ErrorCodes.NoErrors;
         }
 
         //====================================================================================
@@ -2226,6 +2349,12 @@ namespace MeasurementComputing.DAQFlex
             try
             {
                 double rate = m_daqDevice.CriticalParams.InputScanRate;
+
+                //Do not validate the scan rate if the external pacer is enabled
+                if (m_daqDevice.CriticalParams.AiExtPacer == true)
+                {
+                    return ErrorCodes.NoErrors;
+                }
 
                 if (m_daqDevice.CriticalParams.InputTransferMode == TransferMode.BurstIO)
                 {

@@ -177,6 +177,7 @@ namespace MeasurementComputing.DAQFlex
             {
                 messages.Add("AISCAN:XFRMODE=*");
                 messages.Add("AISCAN:RANGE=*");
+                messages.Add("AISCAN:RANGE{*}=*");
                 messages.Add("AISCAN:HIGHCHAN=*");
                 messages.Add("AISCAN:LOWCHAN=*");
                 messages.Add("AISCAN:RATE=*");
@@ -195,6 +196,7 @@ namespace MeasurementComputing.DAQFlex
 
                 messages.Add("?AISCAN:XFRMODE");
                 messages.Add("?AISCAN:RANGE");
+                messages.Add("?AISCAN:RANGE{*}");
                 messages.Add("?AISCAN:HIGHCHAN");
                 messages.Add("?AISCAN:LOWCHAN");
                 messages.Add("?AISCAN:RATE");
@@ -252,9 +254,8 @@ namespace MeasurementComputing.DAQFlex
                 if (channel < 0 || channel > m_maxChannels)
                     return ErrorCodes.InvalidAiChannelSpecified;
             }
-            else if (message.Contains(Constants.QUERY.ToString()))
-            {
-                if (channel < 0 || channel > m_maxChannels)
+            else if (message.Contains(DaqProperties.CHMODE)){
+                if(channel < 0 || channel > m_maxChannels)
                     return ErrorCodes.InvalidAiChannelSpecified;
             }
             else if (!validChannels.Contains(channel.ToString()))

@@ -213,7 +213,7 @@ namespace MeasurementComputing.DAQFlex
 			{
 				for (int i = 0; i < devCount; i++)
 				{
-					IntPtr pDevice = new IntPtr((int)(*(pDevices + i)));
+					IntPtr pDevice = new IntPtr(pDevices[i]);
 							
 					IntPtr pDesc = Marshal.AllocHGlobal(18);
 					result = LibUsbInterop.LibUsbGetDeviceDescriptor(pDevice, pDesc);
@@ -341,7 +341,13 @@ namespace MeasurementComputing.DAQFlex
 
 			int* dh = null;
 			result = LibUsbInterop.LibUsbOpen(deviceInfo.UsbDevicePtr, &dh);
-			IntPtr devHandle = new IntPtr((int)(dh));
+
+            IntPtr devHandle = IntPtr.Zero;
+
+            if (IntPtr.Size == sizeof(int))
+                devHandle = new IntPtr((int)dh);
+            else if (IntPtr.Size == sizeof(long))
+                devHandle = new IntPtr((long)dh);
 								
 			if (devHandle != IntPtr.Zero)
 			{

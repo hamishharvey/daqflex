@@ -262,6 +262,7 @@ namespace MeasurementComputing.DAQFlex
         OnDataAvailable = 1,
         OnInputScanComplete = 2,
         OnInputScanError = 4,
+        OnAcquisitionArmed = 8,
     }
 
 
@@ -281,8 +282,6 @@ namespace MeasurementComputing.DAQFlex
         Usb1608GID = 0x110,
         Usb1608GXID = 0x111,
         Usb1608GX2AoID = 0x112,
-        Usb201ID = 0x113,
-        Usb204ID = 0x114,
         Usb1208FSPlus = 0xe8,
         Usb1408FSPlus = 0xe9,
         Usb1608FSPlus = 0xea,
@@ -291,6 +290,10 @@ namespace MeasurementComputing.DAQFlex
         Usb711xBOOT = 0x8116,
         Usb1208FSPlusBOOT= 0x80e8,
         Usb1408FSPlusBOOT= 0x80e9,
-        Usb1608FSPlusBOOT= 0x80ea
+        Usb1608FSPlusBOOT= 0x80ea,
+        Usb201 = 0x113,
+        Usb201BOOT = 0x8113,
+        Usb204 = 0x114,
+        Usb204BOOT = 0x8114,
     }
 }

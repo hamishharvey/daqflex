@@ -70,6 +70,7 @@ namespace MeasurementComputing.DAQFlex
         internal const string USB_1608G = "Usb1608G";
         internal const string USB_1608GX = "Usb1608GX";
         internal const string USB_1608GX_2AO = "Usb1608GX2Ao";
+        internal const string USB_201 = "Usb201";
         internal const string USB_204 = "Usb204";
         internal const string VIRTUAL_DEVICE = "VirtualDevice";
         internal const string USB_1208FS_PLUS = "Usb1208FSPlus";
@@ -231,6 +232,11 @@ namespace MeasurementComputing.DAQFlex
         internal const string AOSCANCOUNT_QUERY = "?AOSCAN:COUNT";
         internal const string AOSCANINDEX_QUERY = "?AOSCAN:INDEX";
         internal const string AOSCANBUFSIZE_QUERY = "?AOSCAN:BUFSIZE";
+        internal const string AISCAN_MIN_SAMPLE_RATE_QUERY = "?AISCAN:MINSAMPLERATE";
+        internal const string AISCAN_MAX_SAMPLE_RATE_QUERY = "?AISCAN:MAXSAMPLERATE";
+        internal const string AISCAN_SAMPLE_DT_QUERY = "?AISCAN:SAMPLEDT";
+        internal const string AISCAN_XFER_TIME = "AISCAN:XFERTIME";
+        internal const string AISCAN_XFER_TIME_QUERY = "?AISCAN:XFERTIME";
     }
 
     internal class CurlyBraces

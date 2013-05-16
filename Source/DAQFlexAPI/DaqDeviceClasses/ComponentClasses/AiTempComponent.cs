@@ -504,6 +504,7 @@ namespace MeasurementComputing.DAQFlex
                 {
                     cjcVolts = m_thermocouple.TemperatureToVoltage(cjcValue);
                     valueDegC = m_thermocouple.VoltageToTemperature(chVolts + cjcVolts);
+                    scaledValue = valueDegC;
                 }
 
                 if (m_otd)

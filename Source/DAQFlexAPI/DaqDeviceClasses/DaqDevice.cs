@@ -48,6 +48,7 @@ namespace MeasurementComputing.DAQFlex
         protected Object m_deviceLock = new Object();
         protected Object m_readDataLock = new Object();
         protected Object m_writeDataLock = new Object();
+        protected Object m_errorMessageLock = new Object();
         protected bool m_deviceReleased = true;
         private byte[] m_devIdMessage = new byte[Constants.MAX_COMMAND_LENGTH];
         protected bool m_updateRanges = false;
@@ -303,6 +304,48 @@ namespace MeasurementComputing.DAQFlex
         }
 #endif
 
+        //=====================================================================
+        /// <summary>
+        /// Checks if the device is potentialy in use by another process
+        /// Not the best approach - but the only one for now
+        /// </summary>
+        //=====================================================================
+        internal ErrorCodes CheckUsage()
+        {
+            if (!GetDevCapsString("AISCAN:MAXSCANRATE", false).Contains(PropertyValues.NOT_SUPPORTED))
+            {
+                    // get the scan status directly from the device...
+                SendMessageDirect(Messages.AISCAN_STATUS_QUERY);
+                string status = m_driverInterface.ReadStringDirect();
+
+                    // check if an ai scan is running...
+                if (status.Contains(PropertyValues.RUNNING))
+                {
+#if !WindowsCE
+                    Application.ApplicationExit -= new EventHandler(OnApplicationExit);
+#endif
+                    return ErrorCodes.InputScanAlreadyInProgress;
+                }
+            }
+
+            if (!GetDevCapsString("AOSCAN:MAXSCANRATE", false).Contains(PropertyValues.NOT_SUPPORTED))
+            {
+                SendMessageDirect(Messages.AOSCAN_STATUS_QUERY);
+                string status = m_driverInterface.ReadStringDirect();
+
+                // check if an ao scan is running...
+                if (status.Contains(PropertyValues.RUNNING))
+                {
+#if !WindowsCE
+                    Application.ApplicationExit -= new EventHandler(OnApplicationExit);
+#endif
+                    return ErrorCodes.OutputScanAlreadyInProgress;
+                }
+            }
+
+            return ErrorCodes.NoErrors;
+        }
+
         //====================================================================
         /// <summary>
         /// Virutal method to shut down a device when the application exits
@@ -319,13 +362,19 @@ namespace MeasurementComputing.DAQFlex
                 try
                 {
                     if (!GetDevCapsString("AISCAN:MAXSCANRATE", false).Contains(PropertyValues.NOT_SUPPORTED))
+                    {
                         SendMessage("AISCAN:STOP");
+                    }
 
                     if (!GetDevCapsString("AOSCAN:MAXSCANRATE", false).Contains(PropertyValues.NOT_SUPPORTED))
+                    {
                         SendMessage("AOSCAN:STOP");
+                    }
 
                     if (!GetDevCapsString("CTR:CHANNELS", false).Contains(PropertyValues.NOT_SUPPORTED))
+                    {
                         SendMessage("CTR{0}:STOP");
+                    }
                 }
                 catch (Exception)
                 {
@@ -2038,5 +2087,28 @@ namespace MeasurementComputing.DAQFlex
             LowerLimit = lowerLimit;
             UpperLimit = upperLimit;
         }
+    }
+
+    public class AcquisitionInfo
+    {
+        /// <summary>
+        /// this is the number of samples per channel per driver transfer
+        /// </summary>
+        public int AiScans { get; set; }
+
+        /// <summary>
+        /// sanity check - this indicates if the queue is enabled for analog input scans
+        /// </summary>
+        public bool AiQueueEnabled { get; set; }
+
+        /// <summary>
+        /// sanity check - this indicates if cal coefficeints will be applied to the data
+        /// </summary>
+        public bool IsAiDataCalibrated { get; set; }
+
+        /// <summary>
+        /// sanity check - the actual input scan rate
+        /// </summary>
+        public double InputScanRate { get; set; }
     }
 }

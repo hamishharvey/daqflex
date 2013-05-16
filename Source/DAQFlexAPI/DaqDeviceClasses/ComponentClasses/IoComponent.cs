@@ -432,6 +432,42 @@ namespace MeasurementComputing.DAQFlex
 
         //====================================================================================
         /// <summary>
+        /// Virtual method for processing a min scan rate query
+        /// </summary>
+        /// <param name="message"></param>
+        /// <returns></returns>
+        //====================================================================================
+        internal virtual ErrorCodes ProcessMinSampleRateQuery(string message)
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //====================================================================================
+        /// <summary>
+        /// Virtual method for processing a max scan rate query
+        /// </summary>
+        /// <param name="message"></param>
+        /// <returns></returns>
+        //====================================================================================
+        internal virtual ErrorCodes ProcessMaxSampleRateQuery(string message)
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //====================================================================================
+        /// <summary>
+        /// Virtual method for processing a sample dt query
+        /// </summary>
+        /// <param name="message"></param>
+        /// <returns></returns>
+        //====================================================================================
+        internal virtual ErrorCodes ProcessSampleDtQuery(string message)
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //====================================================================================
+        /// <summary>
         /// Virtual method for processing an external pacer message
         /// </summary>
         /// <param name="message">The device message</param>

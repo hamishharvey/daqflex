@@ -37,245 +37,253 @@ namespace MeasurementComputing.DAQFlex
         //======================================================================
         public DaqResponse SendMessage(string message)
         {
-            Monitor.Enter(m_deviceLock);
-
-            m_messagePending = true;
-
-            DaqException dex;
-
-            if (m_deviceReleased)
+            try
             {
-                dex = ResolveException(ErrorCodes.DeviceHasBeenReleased);
-                m_messagePending = false;
-                Monitor.Exit(m_deviceLock);
-                throw dex;
-            }
+                Monitor.Enter(m_deviceLock);
 
-            if (message == null || message == String.Empty)
-            {
-                dex = ResolveException(ErrorCodes.MessageIsEmpty);
-                m_messagePending = false;
-                Monitor.Exit(m_deviceLock);
-                throw dex;
-            }
+                m_messagePending = true;
 
-            m_apiMessageError = ErrorCodes.NoErrors;
+                DaqException dex;
 
-            //********************************************************
-            // Convert the message to upper case
-            //********************************************************
-            string msg;
-
-            if (!message.Contains(Constants.QUERY.ToString()) && message.Contains(DaqComponents.DEV) && message.Contains(DaqProperties.ID))
-            {
-                // when the device ID is being set ("DEV:ID=myID"), don't convert the value of the ID
-                string id = MessageTranslator.GetPropertyValue(message);
-                msg = message.Remove(message.IndexOf(Constants.EQUAL_SIGN) + 1, 
-                                     message.Length - message.IndexOf(Constants.EQUAL_SIGN) - 1);
-                msg = msg.ToUpper();
-                msg += id;
-            }
-            else
-            {
-                msg = message.ToUpper();
-            }
-
-            // remove leading and trailing white spaces
-            msg = msg.Trim();
-
-            //if (this is VirtualDevice && msg[0] == Constants.REFLECTOR_SYMBOL)
-            //{
-            //    return ((VirtualDevice)this).SendVirtualMessage(msg);
-            //}
-
-            //********************************************************
-            // Check for a Device Reflection Message
-            //********************************************************
-            if (msg[0] == Constants.REFLECTOR_SYMBOL)
-            {
-                // '@' denotes a Device Reflection message - let the reflector handle it then return
-                DaqResponse featureResponse = GetDeviceCapability(msg);
-                m_messagePending = false;
-                Monitor.Exit(m_deviceLock);
-                return featureResponse;
-            }
-
-            //********************************************************
-            // Messages with a '>' are sent directly to the device
-            //********************************************************
-            if (msg[0] == Constants.DIRECT_ROUTING_SYMBOL)
-            {
-                msg = msg.Substring(1);
-                ErrorCodes directErrorCode = ErrorCodes.NoErrors;
-                directErrorCode = SendMessageDirect(msg);
-
-                if (directErrorCode != ErrorCodes.NoErrors)
+                if (m_deviceReleased)
                 {
-                    dex = ResolveException(directErrorCode);
+                    dex = ResolveException(ErrorCodes.DeviceHasBeenReleased);
                     m_messagePending = false;
-                    Monitor.Exit(m_deviceLock);
                     throw dex;
                 }
 
-                string directResponse = m_driverInterface.ReadStringDirect();
-                double directValue = m_driverInterface.ReadValueDirect();
+                if (message == null || message == String.Empty)
+                {
+                    dex = ResolveException(ErrorCodes.MessageIsEmpty);
+                    m_messagePending = false;
+                    throw dex;
+                }
 
-                Monitor.Exit(m_deviceLock);
+                m_apiMessageError = ErrorCodes.NoErrors;
 
-                return new DaqResponse(directResponse, directValue);
-            }
+                //********************************************************
+                // Convert the message to upper case
+                //********************************************************
+                string msg;
 
-            //********************************************************
-            // Get the component type this message pertains to
-            //********************************************************
-            string componentType = GetComponentType(msg);
-
-            if (componentType == String.Empty)
-            {
-                dex = ResolveException(ErrorCodes.InvalidComponentSpecified);
-                m_messagePending = false; 
-                Monitor.Exit(m_deviceLock);
-                throw dex;
-            }
-
-            //********************************************************
-            // Preprocess the message
-            //********************************************************
-            PreprocessMessage(ref msg, componentType);
-
-            if (m_apiMessageError != ErrorCodes.NoErrors)
-            {
-                if (m_apiMessageError == ErrorCodes.InvalidMessage)
-                    dex = ResolveException(msg, m_apiMessageError);
+                if (!message.Contains(Constants.QUERY.ToString()) && message.Contains(DaqComponents.DEV) && message.Contains(DaqProperties.ID))
+                {
+                    // when the device ID is being set ("DEV:ID=myID"), don't convert the value of the ID
+                    string id = MessageTranslator.GetPropertyValue(message);
+                    msg = message.Remove(message.IndexOf(Constants.EQUAL_SIGN) + 1,
+                                         message.Length - message.IndexOf(Constants.EQUAL_SIGN) - 1);
+                    msg = msg.ToUpper();
+                    msg += id;
+                }
                 else
-                    dex = ResolveException(m_apiMessageError);
-
-                m_messagePending = false;
-                Monitor.Exit(m_deviceLock);
-                throw dex;
-            }
-
-            //********************************************************
-            // Return API response for API-only messages
-            //********************************************************
-            if (!SendMessageToDevice)
-            {
-                m_messagePending = false;
-                Monitor.Exit(m_deviceLock);
-
-                return m_apiResponse;
-            }
-
-            //********************************************************
-            // Preprocess the data
-            //********************************************************
-
-            ErrorCodes result;
-
-            if (msg.Contains("VALUE") && msg.Contains("="))
-            {
-                result = PreprocessData(ref msg, componentType);
-
-                if (result != ErrorCodes.NoErrors)
                 {
-                    dex = ResolveException(result);
+                    msg = message.ToUpper();
+                }
 
+                // remove leading and trailing white spaces
+                msg = msg.Trim();
+
+                //if (this is VirtualDevice && msg[0] == Constants.REFLECTOR_SYMBOL)
+                //{
+                //    return ((VirtualDevice)this).SendVirtualMessage(msg);
+                //}
+
+                //********************************************************
+                // Check for a Device Reflection Message
+                //********************************************************
+                if (msg[0] == Constants.REFLECTOR_SYMBOL)
+                {
+                    // '@' denotes a Device Reflection message - let the reflector handle it then return
+                    DaqResponse featureResponse = GetDeviceCapability(msg);
                     m_messagePending = false;
+                    
                     Monitor.Exit(m_deviceLock);
+
+                    return featureResponse;
+                }
+
+                //********************************************************
+                // Messages with a '>' are sent directly to the device
+                //********************************************************
+                if (msg[0] == Constants.DIRECT_ROUTING_SYMBOL)
+                {
+                    msg = msg.Substring(1);
+                    ErrorCodes directErrorCode = ErrorCodes.NoErrors;
+                    directErrorCode = SendMessageDirect(msg);
+
+                    if (directErrorCode != ErrorCodes.NoErrors)
+                    {
+                        dex = ResolveException(directErrorCode);
+                        m_messagePending = false;
+                        throw dex;
+                    }
+
+                    string directResponse = m_driverInterface.ReadStringDirect();
+                    double directValue = m_driverInterface.ReadValueDirect();
+
+                    Monitor.Exit(m_deviceLock);
+
+                    return new DaqResponse(directResponse, directValue);
+                }
+
+                //********************************************************
+                // Get the component type this message pertains to
+                //********************************************************
+                string componentType = GetComponentType(msg);
+
+                if (componentType == String.Empty)
+                {
+                    dex = ResolveException(ErrorCodes.InvalidComponentSpecified);
+                    m_messagePending = false;
                     throw dex;
                 }
-            }
 
-            //********************************************************************************
-            // Queue the device message in case the device configuration needs to be restored
-            //********************************************************************************
-            QueueDeviceMessage(msg);
+                //********************************************************
+                // Preprocess the message
+                //********************************************************
+                PreprocessMessage(ref msg, componentType);
 
-            //********************************************************
-            // Transfer the message to the driver interface
-            //********************************************************
+                if (m_apiMessageError != ErrorCodes.NoErrors)
+                {
+                    if (m_apiMessageError == ErrorCodes.InvalidMessage)
+                        dex = ResolveException(msg, m_apiMessageError);
+                    else
+                        dex = ResolveException(m_apiMessageError);
 
-            byte[] messageBytes = new byte[Constants.MAX_COMMAND_LENGTH];
+                    m_messagePending = false;
+                    throw dex;
+                }
 
-            // convert message to an array of bytes for the driver interface
-            for (int i = 0; i < msg.Length; i++)
-                messageBytes[i] = (byte)msg[i];
+                //********************************************************
+                // Return API response for API-only messages
+                //********************************************************
+                if (!SendMessageToDevice)
+                {
+                    m_messagePending = false;
+                    Monitor.Exit(m_deviceLock);
 
-            // let the driver interface transfer the message to the device
-            result = m_driverInterface.TransferMessage(messageBytes);
+                    return m_apiResponse;
+                }
 
-            // retry once on device not responding
-            if (result == ErrorCodes.DeviceNotResponding)
+                //********************************************************
+                // Preprocess the data
+                //********************************************************
+
+                ErrorCodes result;
+
+                if (msg.Contains("VALUE") && msg.Contains("="))
+                {
+                    result = PreprocessData(ref msg, componentType);
+
+                    if (result != ErrorCodes.NoErrors)
+                    {
+                        dex = ResolveException(result);
+
+                        m_messagePending = false;
+                        throw dex;
+                    }
+                }
+
+                //********************************************************************************
+                // Queue the device message in case the device configuration needs to be restored
+                //********************************************************************************
+                QueueDeviceMessage(msg);
+
+                //********************************************************
+                // Transfer the message to the driver interface
+                //********************************************************
+
+                byte[] messageBytes = new byte[Constants.MAX_COMMAND_LENGTH];
+
+                // convert message to an array of bytes for the driver interface
+                for (int i = 0; i < msg.Length; i++)
+                    messageBytes[i] = (byte)msg[i];
+
+                // let the driver interface transfer the message to the device
                 result = m_driverInterface.TransferMessage(messageBytes);
 
-            // if there was an error throw an exception
-            // the application needs to catch this
-            if (result != ErrorCodes.NoErrors)
-            {
-                if (result == ErrorCodes.InvalidMessage)
+                // retry once on device not responding
+                if (result == ErrorCodes.DeviceNotResponding)
+                    result = m_driverInterface.TransferMessage(messageBytes);
+
+                // if there was an error throw an exception
+                // the application needs to catch this
+                if (result != ErrorCodes.NoErrors)
                 {
-                    ErrorCodes ec = m_driverInterface.TransferMessage(m_devIdMessage);
-                    if (ec != ErrorCodes.NoErrors)
-                        result = ErrorCodes.DeviceNotResponding;
+                    if (result == ErrorCodes.InvalidMessage)
+                    {
+                        ErrorCodes ec = m_driverInterface.TransferMessage(m_devIdMessage);
+                        if (ec != ErrorCodes.NoErrors)
+                            result = ErrorCodes.DeviceNotResponding;
+                    }
+
+                    dex = ResolveException(msg, result);
+                    m_messagePending = false;
+                    throw dex;
                 }
 
-                dex = ResolveException(msg, result);
+                //********************************************************
+                // Read back the mesage response
+                //********************************************************
+
+                DaqResponse response = null;
+                string responseText = m_driverInterface.ReadString();
+                double value = m_driverInterface.ReadValue();
+
+                // create the response object
+                response = new DaqResponse(responseText, value);
+
+                //********************************************************
+                // Post process any data sent back in the response
+                //********************************************************
+
+                if (message.Contains(Constants.QUERY.ToString()))
+                {
+                    // PostProcessData is allowed to modify the response
+                    result = PostProcessData(componentType, ref responseText, ref value);
+
+                    // process the response before throwing an error or warning
+                    responseText = AmendResponse(responseText);
+
+                    // recreate the response in case responseText and value were modified
+                    response = new DaqResponse(responseText, value);
+
+                    if (result != ErrorCodes.NoErrors)
+                    {
+                        dex = ResolveException(result, response);
+                        m_messagePending = false;
+                        throw dex;
+                    }
+                }
+
+                //********************************************************
+                // Post process the message
+                //********************************************************
+                PostProcessMessage(ref message, componentType);
+
+                if (m_updateRanges)
+                    UpdateIoCompRanges();
+
                 m_messagePending = false;
+                Monitor.Exit(m_deviceLock);
+
+                System.Diagnostics.Debug.Assert(response != null);
+
+                RestoreApiFlags(componentType);
+
+                return response;
+            }
+            catch (DaqException dex)
+            {
                 Monitor.Exit(m_deviceLock);
                 throw dex;
             }
-
-            //********************************************************
-            // Read back the mesage response
-            //********************************************************
-
-            DaqResponse response = null;
-            string responseText = m_driverInterface.ReadString();
-            double value = m_driverInterface.ReadValue();
-
-            // create the response object
-            response = new DaqResponse(responseText, value);
-
-            //********************************************************
-            // Post process any data sent back in the response
-            //********************************************************
-
-            if (message.Contains(Constants.QUERY.ToString()))
+            catch (Exception ex)
             {
-                // PostProcessData is allowed to modify the response
-                result = PostProcessData(componentType, ref responseText, ref value);
-
-                // process the response before throwing an error or warning
-                responseText = AmendResponse(responseText);
-
-                // recreate the response in case responseText and value were modified
-                response = new DaqResponse(responseText, value);
-
-                if (result != ErrorCodes.NoErrors)
-                {
-                    dex = ResolveException(result, response);
-                    m_messagePending = false;
-                    Monitor.Exit(m_deviceLock);
-                    throw dex;
-                }
+                System.Diagnostics.Debug.Assert(false, String.Format("{0} is not a DaqException", ex.Message));
+                Monitor.Exit(m_deviceLock);
+                throw ex;
             }
-
-            //********************************************************
-            // Post process the message
-            //********************************************************
-            PostProcessMessage(ref message, componentType);
-
-            if (m_updateRanges)
-                UpdateIoCompRanges();
-
-            m_messagePending = false;
-            Monitor.Exit(m_deviceLock);
-
-            System.Diagnostics.Debug.Assert(response != null);
-
-            RestoreApiFlags(componentType);
-
-            return response;
         }
 
         //================================================================================================================
@@ -320,6 +328,17 @@ namespace MeasurementComputing.DAQFlex
 
                 m_driverInterface.OnInputScanErrorCallbackControl = new CallbackControl(this, callback, callbackType, callbackData);
             }
+            //else if (callbackType == CallbackType.OnAcquisitionArmed)
+            //{
+            //    if (m_driverInterface.OnInputScanErrorCallbackControl != null)
+            //    {
+            //        DaqException dex = new DaqException(ErrorMessages.CallbackOperationAlreadyEnabled, ErrorCodes.CallbackOperationAlreadyEnabled);
+            //        throw dex;
+            //    }
+
+            //    m_driverInterface.OnAcquisitionArmedCallbackControl = new CallbackControl(this, callback, callbackType, callbackData);
+
+            //}
 
             Monitor.Exit(m_deviceLock);
         }
@@ -340,6 +359,8 @@ namespace MeasurementComputing.DAQFlex
                 m_driverInterface.OnInputScanCompleteCallbackControl = null;
             else if (callbackType == CallbackType.OnInputScanError)
                 m_driverInterface.OnInputScanErrorCallbackControl = null;
+            //else if (callbackType == CallbackType.OnAcquisitionArmed)
+            //    m_driverInterface.OnAcquisitionArmedCallbackControl = null;
 
             Monitor.Exit(m_deviceLock);
         }
@@ -637,7 +658,7 @@ namespace MeasurementComputing.DAQFlex
         //===================================================================================================
         public string GetErrorMessage(ErrorCodes errorCode)
         {
-            Monitor.Enter(m_deviceLock);
+            Monitor.Enter(m_errorMessageLock);
 
             Type type = typeof(ErrorMessages);
             PropertyInfo pi = type.GetProperty(errorCode.ToString(), BindingFlags.Static | BindingFlags.Public);
@@ -654,7 +675,7 @@ namespace MeasurementComputing.DAQFlex
                 message = String.Format("No text associated with error code {0}", errorCode);
             }
 
-            Monitor.Exit(m_deviceLock);
+            Monitor.Exit(m_errorMessageLock);
 
             return message;
         }

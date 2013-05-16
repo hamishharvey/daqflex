@@ -93,8 +93,6 @@ namespace MeasurementComputing.DAQFlex
                 }
 
                 m_deviceNames.Clear();
-                
-            
 
 				foreach (KeyValuePair<int, DeviceInfo> kvp in m_deviceInfoList)
                 {
@@ -371,26 +369,42 @@ namespace MeasurementComputing.DAQFlex
                 }
             }
 
+            DaqDevice device = null;
+
             try
             {
                 // if the device was found, create a DaqDevice object for it
-                DaqDevice device = DaqDeviceFactory.CreateDeviceObject(deviceInfo);
+                device = DaqDeviceFactory.CreateDeviceObject(deviceInfo);
 
                 // load the device caps
                 device.LoadDeviceCaps(false);
 
-                // Initialize device - initialization may require device caps to be loaded
+                // check if the device is potentially in use 
+                // (this needs to have the device caps loaded)
+                ErrorCodes errorCode = device.CheckUsage();
+
+                if (errorCode != ErrorCodes.NoErrors)
+                {
+                    DaqException dex = device.ResolveException(errorCode);
+                    throw (dex);
+                }
+
+                // Initialize device
                 device.Initialize();
 
+                // add the device to the device list
                 m_daqDeviceList.Add(device);
 
                 return device;
             }
-            catch (DaqException ex)
+            catch (DaqException dex)
             {
+                    // set the device to null
+                device = null;
+
                 // A DaqDevice ctor can throw an exeption if a file handle was already
                 // created for the device
-                throw (ex);
+                throw (dex);
             }
         }
 
@@ -544,7 +558,10 @@ namespace MeasurementComputing.DAQFlex
                 case (DeviceIDs.Usb1608GX2AoID):
                     deviceName = "USB-1608GX-2AO";
                     break;
-                case (DeviceIDs.Usb204ID):
+                case (DeviceIDs.Usb201):
+                    deviceName = "USB-201";
+                    break;
+                case (DeviceIDs.Usb204):
                     deviceName = "USB-204";
                     break;
                     
@@ -562,6 +579,13 @@ namespace MeasurementComputing.DAQFlex
 
                 case (DeviceIDs.Usb1208FSPlusBOOT):
                     deviceName = "USB-1208FS-Plus-BootLoader";
+                    break;
+
+                case (DeviceIDs.Usb201BOOT):
+                    deviceName = "USB-201-BootLoader";
+                    break;
+                case (DeviceIDs.Usb204BOOT):
+                    deviceName = "USB-204-BootLoader";
                     break;
 
                 case (DeviceIDs.Usb1408FSPlusBOOT):

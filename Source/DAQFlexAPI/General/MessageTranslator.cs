@@ -139,10 +139,20 @@ namespace MeasurementComputing.DAQFlex
             {
                 int lIndex = message.IndexOf(CurlyBraces.LEFT);
                 int rIndex = message.IndexOf(CurlyBraces.RIGHT);
+                int fsIndex = message.IndexOf(Constants.VALUE_RESOLVER);
+                string elementText;
 
                 try
                 {
-                    channel = Convert.ToInt32(message.Substring(lIndex + 1, rIndex - (lIndex + 1)));
+                    if (fsIndex > lIndex && fsIndex < rIndex) //Message contains queue element indicator, of form "{0/0}"
+                    {
+                        elementText = message.Substring(lIndex + 1, fsIndex - lIndex - 1);
+                    }
+                    else //Message doesn't contain queue element indicator, of form "{0}"
+                    {
+                        elementText = message.Substring(lIndex + 1, rIndex - lIndex - 1);
+                    }
+                    channel = Convert.ToInt32(elementText);
                 }
                 catch (Exception)
                 {
@@ -187,20 +197,21 @@ namespace MeasurementComputing.DAQFlex
                 if (fsIndex > 0)
                 {
                     elementText = message.Substring(lIndex + 1, fsIndex - lIndex - 1);
+
+                    try
+                    {
+                        elementNumber = Convert.ToInt32(elementText);
+                    }
+                    catch (Exception)
+                    {
+                        elementNumber = -1;
+                    }
                 }
                 else
                 {
-                    elementText = message.Substring(lIndex + 1, rIndex - lIndex - 1);
-                }
-
-                try
-                {
-                    elementNumber = Convert.ToInt32(elementText);
-                }
-                catch (Exception)
-                {
                     elementNumber = -1;
                 }
+
             }
             else
             {
@@ -223,21 +234,31 @@ namespace MeasurementComputing.DAQFlex
             int lIndex = message.IndexOf(CurlyBraces.LEFT);
             int rIndex = message.IndexOf(CurlyBraces.RIGHT);
             int fsIndex = message.IndexOf(Constants.VALUE_RESOLVER);
-            string channelText = String.Empty;
             int channelNumber = -1;
 
             if (lIndex > 0 && rIndex > 0)
             {
                 if (fsIndex > 0)
                 {
-                    channelText = message.Substring(fsIndex + 1, rIndex - fsIndex - 1);
-
                     try
                     {
+                        channelNumber = Convert.ToInt32(message.Substring(fsIndex + 1, rIndex - fsIndex - 1));
+                    }
+                    catch (Exception)
+                    {
+                        channelNumber = -1;
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        string channelText = message.Substring(lIndex + 1, rIndex - lIndex - 1);
                         channelNumber = Convert.ToInt32(channelText);
                     }
                     catch (Exception)
                     {
+                        channelNumber = -1;
                     }
                 }
             }
