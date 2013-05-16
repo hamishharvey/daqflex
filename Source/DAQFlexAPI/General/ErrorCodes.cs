@@ -56,7 +56,11 @@ namespace MeasurementComputing.DAQFlex
         GainQueueNotSupported = 4015,
         GainQueueDepthExceeded = 4016,
         DaqDeviceListNotEmpty = 4017,
+        FpgaNotLoaded = 4018,
+        AiCalibrationInProgress = 4019,
+        AoCalibrationInProgress = 4020,
         BurstIoInProgress = 4021,
+        DeviceHasBeenReleased = 4022,
 
         // General message errors
         InvalidMessage = 4100,
@@ -67,6 +71,11 @@ namespace MeasurementComputing.DAQFlex
         BadPointer = 4105,
         CallbackOperationAlreadyEnabled = 4106,
         MessageIsEmpty = 4107,
+        MinAiCalSlopeValueReached = 4108,
+        MaxAiCalSlopeValueReached = 4109,
+        MinAiCalOffsetValueReached = 4110,
+        MaxAiCalOffsetValueReached = 4111,
+        DeviceHandleIsNull = 4112,
 
         // Invalid parameter errors
         InvalidScanRateSpecified = 4200,
@@ -89,11 +98,38 @@ namespace MeasurementComputing.DAQFlex
         CallbackCountGreaterThanRequestedSamples = 4217,
         CallbackCountTooLarge = 4218,
         InputScanReadCountIsZero = 4219,
-
+        InvalidDioBitValue = 4220,
+        InvalidDioPortValue = 4221,
+        DioPortNotSetForOutput = 4222,
+        DioBitNotSetForOutput = 4223,
+        CantWriteDioPort = 4224,
+        InvalidTimerPeriod = 4225,
+        InvalidTimerDutyCycle = 4226,
+        InvalidTimerDelay = 4227,
+        InvalidCalValue = 4228,
+        InvalidAdAvgValue = 4229,
+        InvalidAdSettlingTime = 4230,
+        InvalidBufferOverwrite = 4231,
+        InvalidAiTriggerLevel = 4232,
+        InvalidQueueElement = 4233,
+        InvalidAiTriggerChannel = 4234,
+        InvalidAiTriggerSource = 4235,
+        InvalidDataRate = 4236,
         InvalidSampleCountForBurstIo = 4237,
+        DuplicateChannelsNotSupportedInQueue = 4238,
+        NoncontiguousChannelsSpecified = 4239,
+        InvalidDateTime = 4240,
+        InvalidValueResolver = 4241,
+        NonsequentialChannelsNotSupportedInQueue = 4242,
+        InvalidInputBlockSize = 4243,
+        NonAdjacentNonAscendingChannelsNotSupportedInQueue = 4244,
+        NonAscendingChannelsNotSupportedInQueue = 4245,
 
         // unsupported functions errors
         BitConfigurationNotSupported = 4300,
+        PortRequiresNoConfiguration = 4301,
+        PortIsInputOnly = 4302,
+        PortIsOutputOnly = 4303,
 
         // Input scan errors (4500)
         InputScanStartedWithZeroSamples = 4500,
@@ -110,6 +146,9 @@ namespace MeasurementComputing.DAQFlex
         InputScanTimeOut = 4511,
         InternalReadBufferError = 4512,
         InputQueueIsEmpty = 4513,
+        InputBufferCannotBeSet = 4514,
+        InputBufferOverrun = 4515,
+        ErrorWritingDataToExternalInputBuffer = 4516,
 
         // Output scan errors (4600)
         OutputScanAlreadyInProgress = 4600,
@@ -121,6 +160,8 @@ namespace MeasurementComputing.DAQFlex
         InvalidOutputBufferSize = 4606,
         NumberOfSamplesGreaterThanHalfBuffer = 4607,
         TotalNumberOfSamplesGreaterThanOutputBufferSize = 4608,
+        OutputBufferCannotBeSet = 4609,
+        OutputBufferTooSmallForContinuousScan = 4610,
         
         // USB errors (4800)
         BulkInputTransfersNotSupported = 4800,
@@ -135,14 +176,12 @@ namespace MeasurementComputing.DAQFlex
         LibusbCouldNotBeLoaded = 4809,
         LibusbCouldNotBeInitialized = 4810,
         LibusbBulkTransferInterrupted = 4811,
-
+        UsbBulkReadError = 4812,
+        UsbBulkWriteError = 4813,
+        
+        // internal errors
         MethodRequiresImplementation = 5000,
-
-        // UL only type errors
-        ContinuousNotCompatibleWithForeground = 6000,
-        ErrorWritingDataToExternalInputBuffer = 6001,
-        FunctionNotSupported = 6002,
-        IncompatibleClockOption = 6003,
+        ActiveChannelsNotSet = 50001,
     }
 
     public enum ErrorLevel

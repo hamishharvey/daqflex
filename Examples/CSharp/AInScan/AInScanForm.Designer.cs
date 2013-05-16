@@ -60,6 +60,7 @@
             // 
             // highChannelComboBox
             // 
+            this.highChannelComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.highChannelComboBox.Location = new System.Drawing.Point(101, 70);
             this.highChannelComboBox.Name = "highChannelComboBox";
             this.highChannelComboBox.Size = new System.Drawing.Size(107, 21);
@@ -76,6 +77,7 @@
             // 
             // rangeComboBox
             // 
+            this.rangeComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.rangeComboBox.Location = new System.Drawing.Point(285, 70);
             this.rangeComboBox.Name = "rangeComboBox";
             this.rangeComboBox.Size = new System.Drawing.Size(107, 21);
@@ -102,6 +104,7 @@
             // 
             // lowChannelComboBox
             // 
+            this.lowChannelComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.lowChannelComboBox.Location = new System.Drawing.Point(101, 38);
             this.lowChannelComboBox.Name = "lowChannelComboBox";
             this.lowChannelComboBox.Size = new System.Drawing.Size(107, 21);
@@ -109,6 +112,7 @@
             // 
             // deviceComboBox
             // 
+            this.deviceComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.deviceComboBox.Location = new System.Drawing.Point(101, 8);
             this.deviceComboBox.Name = "deviceComboBox";
             this.deviceComboBox.Size = new System.Drawing.Size(242, 21);

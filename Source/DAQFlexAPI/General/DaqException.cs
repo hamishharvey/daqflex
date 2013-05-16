@@ -26,6 +26,12 @@ namespace MeasurementComputing.DAQFlex
         private ErrorCodes m_errorCode;
         private ErrorLevel m_level;
         private DaqResponse m_lastResponse;
+        private string m_inputScanStatus = "IDLE";
+        private ulong m_inputScanCount = 0;
+        private long m_inputScanIndex = -1;
+        private string m_outputScanStatus = "IDLE";
+        private ulong m_outputScanCount = 0;
+        private long m_outputScanIndex = -1;
 
         internal DaqException(string errorMessage, ErrorCodes errorCode)
             : base(errorMessage)
@@ -35,20 +41,32 @@ namespace MeasurementComputing.DAQFlex
             m_lastResponse = null;
         }
 
-        internal DaqException(string errorMessage, ErrorCodes errorCode, ErrorLevel level)
+        internal DaqException(DaqDevice device, string errorMessage, ErrorCodes errorCode, ErrorLevel level)
             : base(errorMessage)
         {
             m_errorCode = errorCode;
             m_level = level;
             m_lastResponse = null;
+            m_inputScanStatus = device.DriverInterface.InputScanStatus.ToString();
+            m_inputScanCount = device.DriverInterface.InputScanCount;
+            m_inputScanIndex = device.DriverInterface.InputScanIndex;
+            m_outputScanStatus = device.DriverInterface.OutputScanState.ToString();
+            m_outputScanCount = device.DriverInterface.OutputScanCount;
+            m_outputScanIndex = device.DriverInterface.OutputScanIndex;
         }
 
-        internal DaqException(string errorMessage, ErrorCodes errorCode, ErrorLevel level, DaqResponse lastResponse)
+        internal DaqException(DaqDevice device, string errorMessage, ErrorCodes errorCode, ErrorLevel level, DaqResponse lastResponse)
             : base(errorMessage)
         {
             m_errorCode = errorCode;
             m_level = level;
             m_lastResponse = lastResponse;
+            m_inputScanStatus = device.DriverInterface.InputScanStatus.ToString();
+            m_inputScanCount = device.DriverInterface.InputScanCount;
+            m_inputScanIndex = device.DriverInterface.InputScanIndex;
+            m_outputScanStatus = device.DriverInterface.OutputScanState.ToString();
+            m_outputScanCount = device.DriverInterface.OutputScanCount;
+            m_outputScanIndex = device.DriverInterface.OutputScanIndex;
         }
 
         public ErrorCodes ErrorCode
@@ -64,6 +82,36 @@ namespace MeasurementComputing.DAQFlex
         public DaqResponse LastResponse
         {
             get { return m_lastResponse; }
+        }
+
+        public string InputScanStatus
+        {
+            get { return m_inputScanStatus; }
+        }
+
+        public ulong InputScanCount
+        {
+            get { return m_inputScanCount; }
+        }
+
+        public long InputScanIndex
+        {
+            get { return m_inputScanIndex; }
+        }
+
+        public string OutputScanStatus
+        {
+            get { return m_outputScanStatus; }
+        }
+
+        public ulong OutputScanCount
+        {
+            get { return m_outputScanCount; }
+        }
+
+        public long OutputScanIndex
+        {
+            get { return m_outputScanIndex; }
         }
     }
 }

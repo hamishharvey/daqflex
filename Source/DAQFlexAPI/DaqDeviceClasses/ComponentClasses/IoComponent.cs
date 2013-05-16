@@ -18,30 +18,39 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Globalization;
+
 
 namespace MeasurementComputing.DAQFlex
 {
     internal class IoComponent
     {
+        protected const int DEFAULT_READ_TIMEOUT = 3000;
+        protected const int DEFAULT_WRITE_TIMEOUT = 3000;
+
         protected DaqDevice m_daqDevice;
+        protected DeviceInfo m_deviceInfo;
 
         protected Dictionary<string, CalCoeffs> m_calCoeffs = new Dictionary<string, CalCoeffs>();
         protected Dictionary<string, Range> m_supportedRanges = new Dictionary<string, Range>();
         protected ActiveChannels[] m_activeChannels;
-        protected bool m_calibrateData = true;
+
+        protected bool m_calibrateData;
+        protected bool m_calibrateDataClone;
         protected bool m_scaleData = false;
+        protected bool m_scaleDataClone = false;
 
         protected string[] m_ranges;
         protected int m_channelCount;
-        //protected bool m_isAiData = false;
-        //protected bool m_isAoData = false;
-        //protected int m_maxCount;
         protected int m_dataWidth;
         protected int m_maxChannels;
         protected bool m_voltsOnly;
-        protected double m_maxThroughput;
+        protected double m_maxScanThroughput;
+        protected double m_maxScanRate;
+        protected double m_minScanRate;
         protected string m_valueUnits = String.Empty;
-        protected string m_internalClockOptionMessage;
+        protected string m_valueUnitsClone = String.Empty;
+        protected List<string> m_defaultParamMessages = new List<string>();
 
         //=================================================================================================================
         /// <summary>
@@ -53,6 +62,7 @@ namespace MeasurementComputing.DAQFlex
         internal IoComponent(DaqDevice daqDevice, DeviceInfo deviceInfo, int maxChannels)
         {
             m_daqDevice = daqDevice;
+            m_deviceInfo = deviceInfo;
             m_maxChannels = maxChannels;
         }
 
@@ -69,6 +79,16 @@ namespace MeasurementComputing.DAQFlex
 
         //====================================================================================
         /// <summary>
+        /// Gets the max number of channels for the IOComponent
+        /// </summary>
+        //====================================================================================
+        internal virtual int MaxChannels
+        {
+            get { return m_maxChannels; }
+        }
+
+        //====================================================================================
+        /// <summary>
         /// Virtual method to get supported messages
         /// </summary>
         /// <returns>A list of supported messages</returns>
@@ -78,28 +98,12 @@ namespace MeasurementComputing.DAQFlex
             return null;
         }
 
-        //====================================================================================
+        //===========================================================================================
         /// <summary>
-        /// The list of supported ranges
+        /// Virtual method for resetting a IoComponent's critical params
         /// </summary>
-        //====================================================================================
-        internal Dictionary<string, Range> SupportedRanges
-        {
-            get { return m_supportedRanges; }
-        }
-
-        internal string DeferredClockOptionMessage { get; set; }
-
-        //====================================================================================
-        /// <summary>
-        /// Virutal method to set the clock source options
-        /// </summary>
-        /// <param name="clockSource">The clock source</param>
-        //====================================================================================
-        internal virtual ErrorCodes SendDeferredClockMessage(ClockSource clockSource)
-        {
-            return ErrorCodes.NoErrors;
-        }
+        //===========================================================================================
+        protected virtual void ResetCriticalParams() { }
 
 #region Message Processing and Validation
 
@@ -190,21 +194,41 @@ namespace MeasurementComputing.DAQFlex
                 if (message.Contains(PropertyValues.ENABLE))
                 {
                     m_scaleData = true;
+                    m_scaleDataClone = m_scaleData;
                     m_daqDevice.ApiResponse = new DaqResponse(MessageTranslator.ExtractResponse(message), double.NaN);
+
+                    m_daqDevice.CriticalParams.ScaleAiData = true;
                 }
                 else if (message.Contains(PropertyValues.DISABLE))
                 {
                     m_scaleData = false;
+                    m_scaleDataClone = m_scaleData;
                     m_daqDevice.ApiResponse = new DaqResponse(MessageTranslator.ExtractResponse(message), double.NaN);
+
+                    m_daqDevice.CriticalParams.ScaleAiData = false;
                 }
                 else
                 {
                     return ErrorCodes.InvalidMessage;
                 }
 
+                RecalculateTriggerLevel();
+
                 m_daqDevice.SendMessageToDevice = false;
                 return ErrorCodes.NoErrors;
             }
+        }
+
+        //===========================================================================================
+        /// <summary>
+        /// Validates the cal message
+        /// </summary>
+        /// <param name="message">The message</param>
+        /// <returns>An error code</returns>
+        //===========================================================================================
+        internal virtual ErrorCodes ProcessSlopeOffsetMessage(ref string message)
+        {
+            return ErrorCodes.NoErrors;
         }
 
         //===========================================================================================
@@ -238,7 +262,31 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="message">The message</param>
         /// <returns>An error code</returns>
         //===========================================================================================
-        internal virtual ErrorCodes ProcessValueMessage(ref string message)
+        internal virtual ErrorCodes ProcessValueGetMessage(ref string message)
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //===========================================================================================
+        /// <summary>
+        /// Processes the Value message
+        /// </summary>
+        /// <param name="message">The message</param>
+        /// <returns>An error code</returns>
+        //===========================================================================================
+        internal virtual ErrorCodes ProcessValueGetMessage(int channel, ref string message)
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //===========================================================================================
+        /// <summary>
+        /// Processes the Value message
+        /// </summary>
+        /// <param name="message">The message</param>
+        /// <returns>An error code</returns>
+        //===========================================================================================
+        internal virtual ErrorCodes ProcessValueSetMessage(ref string message)
         {
             return ErrorCodes.NoErrors;
         }
@@ -251,6 +299,18 @@ namespace MeasurementComputing.DAQFlex
         /// <returns>An error code</returns>
         //===========================================================================================
         internal virtual ErrorCodes ProcessCJCMessage(ref string message)
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //===========================================================================================
+        /// <summary>
+        /// Virtual method for processing AIQUEUE messages
+        /// </summary>
+        /// <param name="message">The message</param>
+        /// <returns>An error code</returns>
+        //===========================================================================================
+        internal virtual ErrorCodes PreProcessAiQueueMessage(ref string message)
         {
             return ErrorCodes.NoErrors;
         }
@@ -276,37 +336,21 @@ namespace MeasurementComputing.DAQFlex
         //===========================================================================================
         internal virtual ErrorCodes ProcessCalMessage(ref string message)
         {
-            // The CAL setting is applied to all channels
-            if (message.Contains(CurlyBraces.LEFT.ToString()) && message.Contains(CurlyBraces.RIGHT.ToString()))
-            {
-                return ErrorCodes.InvalidMessage;
-            }
-            if (message[0] == Constants.QUERY)
-            {
-                m_daqDevice.ApiResponse = new DaqResponse(message.Remove(0, 1) + "=" + (m_calibrateData ? PropertyValues.ENABLE : PropertyValues.DISABLE).ToString(), double.NaN);
-                m_daqDevice.SendMessageToDevice = false;
-                return ErrorCodes.NoErrors;
-            }
-            else
-            {
-                if (message.Contains(PropertyValues.ENABLE))
-                {
-                    m_calibrateData = true;
-                    m_daqDevice.ApiResponse = new DaqResponse(MessageTranslator.ExtractResponse(message), double.NaN);
-                }
-                else if (message.Contains(PropertyValues.DISABLE))
-                {
-                    m_calibrateData = false;
-                    m_daqDevice.ApiResponse = new DaqResponse(MessageTranslator.ExtractResponse(message), double.NaN);
-                }
-                else
-                {
-                    return ErrorCodes.InvalidMessage;
-                }
+            return ErrorCodes.NoErrors;
 
-                m_daqDevice.SendMessageToDevice = false;
-                return ErrorCodes.NoErrors;
-            }
+        }
+
+        //===========================================================================================
+        /// <summary>
+        /// Validates the trig message
+        /// </summary>
+        /// <param name="message">The message</param>
+        /// <returns>An error code</returns>
+        //===========================================================================================
+        internal virtual ErrorCodes ProcessTrigMessage(ref string message)
+        {
+            return ErrorCodes.NoErrors;
+
         }
 
         //====================================================================================
@@ -377,6 +421,72 @@ namespace MeasurementComputing.DAQFlex
 
         //====================================================================================
         /// <summary>
+        /// Virtual method for processing a scan rate message
+        /// </summary>
+        /// <param name="message">The device message</param>
+        //====================================================================================
+        internal virtual ErrorCodes ProcessScanRate(ref string message)
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //====================================================================================
+        /// <summary>
+        /// Virtual method for processing an external pacer message
+        /// </summary>
+        /// <param name="message">The device message</param>
+        /// <returns>An error code</returns>
+        //====================================================================================
+        internal virtual ErrorCodes PreprocessExtPacer(ref string message)
+        {
+            ErrorCodes errorCode = ErrorCodes.NoErrors;
+
+            if (message != Messages.AISCAN_EXTPACER_DISMASTER &&
+                            message != Messages.AISCAN_EXTPACER_DISSLAVE &&
+                                message != Messages.AISCAN_EXTPACER_ENABLE &&
+                                    message != Messages.AISCAN_EXTPACER_DISABLE)
+                errorCode = ErrorCodes.InvalidPropertyValueSpecified;
+
+            return errorCode;
+        }
+
+        //=================================================================================================================
+        /// <summary>
+        /// Virtual function to handle the /HEX=0x... format
+        /// </summary>
+        /// <param name="message">The message</param>
+        /// <returns>An error code</returns>
+        //=================================================================================================================
+        internal virtual ErrorCodes PreprocessCalSlopeMessage(ref string message)
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //=================================================================================================================
+        /// <summary>
+        /// virtual function to handle the /HEX=0x... format
+        /// </summary>
+        /// <param name="message">The message</param>
+        /// <returns>An error code</returns>
+        //=================================================================================================================
+        internal virtual ErrorCodes PreprocessCalOffsetMessage(ref string message)
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //====================================================================================
+        /// <summary>
+        /// Virtual method for processing a data rate message
+        /// </summary>
+        /// <param name="message">The device message</param>
+        //====================================================================================
+        internal virtual ErrorCodes ValidateDataRate()
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //====================================================================================
+        /// <summary>
         /// Virtual method for processing a rate message
         /// </summary>
         /// <param name="message">The device message</param>
@@ -403,25 +513,47 @@ namespace MeasurementComputing.DAQFlex
         /// </summary>
         /// <param name="message">The device message</param>
         //====================================================================================
-        internal virtual ErrorCodes ProcessXferModeMessage(ref string message)
+        internal virtual ErrorCodes PreProcessXferModeMessage(ref string message)
         {
             return ErrorCodes.NoErrors;
         }
 
         //====================================================================================
         /// <summary>
-        /// Virtual method for processing the Ai trig message
+        /// Virtual method to start a component's self calibration
+        /// </summary>
+        //====================================================================================
+        internal virtual ErrorCodes StartCal()
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //====================================================================================
+        /// <summary>
+        /// Virtual method for processing a Cal status message
         /// </summary>
         /// <param name="message">The device message</param>
         //====================================================================================
-        internal virtual ErrorCodes ProcessAiTrigTypeMessage(ref string message)
+        internal virtual ErrorCodes ProcessCalStatusMessage(ref string message)
         {
             return ErrorCodes.NoErrors;
         }
 
         //====================================================================================
         /// <summary>
-        /// Virtual method for validating 
+        /// Virtual method for processing a data rate message
+        /// </summary>
+        /// <param name="message">The device message</param>
+        //====================================================================================
+        internal virtual ErrorCodes ProcessDataRateMessage(string message)
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //====================================================================================
+        /// <summary>
+        /// Virtual method for checking the message value against the supported values
+        /// using the device's reflection values.
         /// </summary>
         /// <param name="message">The device message</param>
         //====================================================================================
@@ -431,13 +563,20 @@ namespace MeasurementComputing.DAQFlex
 
             if (equalIndex >= 0)
             {
+                string messageValue;
+                string supportedValues;
+                string[] valueParts;
+
                 try
                 {
+                    messageValue = MessageTranslator.GetPropertyValue(message);
+                    if (messageValue.Contains("{"))
+                        messageValue = messageValue.Substring(0, messageValue.IndexOf('{'));
+                    supportedValues = m_daqDevice.GetDevCapsString(feature, false);
+                    supportedValues = MessageTranslator.GetReflectionValue(supportedValues);
+                    valueParts = supportedValues.Split(new char[] { PlatformInterop.LocalListSeparator });
 
-                    DaqResponse response = m_daqDevice.GetDeviceCapability(feature);
-                    string featureValue = MessageTranslator.GetPropertyValue(message);
-
-                    if (!response.ToString().Contains(featureValue))
+                    if (Array.IndexOf(valueParts, messageValue) < 0)
                         return false;
 
                 }
@@ -448,45 +587,6 @@ namespace MeasurementComputing.DAQFlex
             }
 
             return true;
-        }
-
-        //====================================================================================
-        /// <summary>
-        /// Checks the conditions against the transfer mode being set
-        /// </summary>
-        /// <param name="message">the device message</param>
-        /// <returns>The error code</returns>
-        //====================================================================================
-        internal virtual ErrorCodes CheckInputTransferModeConditions(string message)
-        {
-            return ErrorCodes.NoErrors;
-        }
-
-        //====================================================================================
-        /// <summary>
-        /// Max rate calculation - Method1
-        /// </summary>
-        /// <param name="maxThroughput">The max throughput</param>
-        /// <param name="channelCount">the channel count</param>
-        /// <returns>The max rate</returns>
-        //====================================================================================
-        internal double RateCalcMethod1(double maxThroughput, int channelCount)
-        {
-            return maxThroughput / channelCount;
-        }
-
-        //====================================================================================
-        /// <summary>
-        /// Max rate calculation - Method2
-        /// </summary>
-        /// <param name="maxThroughput">The max throughput</param>
-        /// <param name="maxRate">The max rate</param>
-        /// <param name="channelCount">the channel count</param>
-        /// <returns>The max rate</returns>
-        //====================================================================================
-        internal double RateCalcMethod2(double maxThroughput, double maxRate, int channelCount)
-        {
-            return Math.Min(maxRate, maxThroughput / channelCount);
         }
 
 #endregion
@@ -510,14 +610,64 @@ namespace MeasurementComputing.DAQFlex
 
         //====================================================================================
         /// <summary>
-        /// Virtual method for scaling single-point I/O data
+        /// Virtual method to initialize IO components
+        /// </summary>
+        //====================================================================================
+        internal virtual void ConfigureScan() { }
+
+        //====================================================================================
+        /// <summary>
+        /// Virtual method to initialize a scan operation
+        /// </summary>
+        //====================================================================================
+        internal virtual void RunScan() { }
+
+        //===========================================================================================
+        /// <summary>
+        /// Virtual method for invoking device-specific methods for starting an input scan
+        /// </summary>
+        //===========================================================================================
+        internal virtual void BeginInputScan()
+        {
+        }
+
+        //===========================================================================================
+        /// <summary>
+        /// Virtual method for invoking device-specific methods for stopping an input scan
+        /// </summary>
+        //===========================================================================================
+        internal virtual void EndInputScan()
+        {
+        }
+
+        //===========================================================================================
+        /// <summary>
+        /// Virtual method for invoking device-specific methods for starting an output scan
+        /// </summary>
+        //===========================================================================================
+        internal virtual void BeginOutputScan()
+        {
+        }
+
+        //===========================================================================================
+        /// <summary>
+        /// Virtual method for invoking device-specific methods for stopping an input scan
+        /// </summary>
+        //===========================================================================================
+        internal virtual void EndOutScan()
+        {
+        }
+        
+        //====================================================================================
+        /// <summary>
+        /// Virtual method for scaling signed single-point I/O data
         /// </summary>
         /// <param name="value">The value</param>
         /// <returns>The error code</returns>
         //====================================================================================
-        internal virtual ErrorCodes ScaleData(ref double value)
+        internal virtual ErrorCodes ScaleData(int channelIndex, ref double value)
         {
-            return ErrorCodes.NoErrors; 
+            return ErrorCodes.NoErrors;
         }
 
         //====================================================================================
@@ -604,45 +754,36 @@ namespace MeasurementComputing.DAQFlex
             return TransferMode.BlockIO;
         }
 
+        //=================================================================================================================
+        /// <summary>
+        /// Virtual method to recalculate the trigger level
+        /// </summary>
+        //=================================================================================================================
+        internal virtual void RecalculateTriggerLevel() { }
+
+        //====================================================
+        /// <summary>
+        /// Restores the API flags
+        /// </summary>
+        //====================================================
+        internal virtual void RestoreApiFlags()
+        {
+            m_calibrateData = m_calibrateDataClone;
+            m_scaleData = m_scaleDataClone;
+        }
+
+        //===========================================================================================
+        /// <summary>
+        /// Virtual method to post process a message
+        /// </summary>
+        /// <param name="message">The message to process</param>
+        /// <returns>True if the message is to be sent to the device, otherwise false</returns>
+        //===========================================================================================
+        internal virtual void PostProcessMessage(ref string message, string messageType)
+        {
+        }
+
 #region Feature related methods
-
-        internal virtual int GetMaxChannels()
-        {
-            return 0;
-        }
-
-        //====================================================
-        /// <summary>
-        /// Gets the maximum hardware paced rate
-        /// </summary>
-        /// <returns>Max scan rate</returns>
-        //====================================================
-        internal virtual double GetMaxScanRate()
-        {
-            return 1000.0;
-        }
-
-        //====================================================
-        /// <summary>
-        /// Gets the minimum hardware paced rate
-        /// </summary>
-        /// <returns>Min scan rate</returns>
-        //====================================================
-        internal virtual double GetMinScanRate()
-        {
-            return 1.0;
-        }
-
-        //====================================================
-        /// <summary>
-        /// Gets the maximum software paced rate
-        /// </summary>
-        /// <returns>Max rate</returns>
-        //====================================================
-        internal virtual double GetMaxRate()
-        {
-            return 100.0;
-        }
 
         //====================================================
         /// <summary>
@@ -663,7 +804,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="devCapsKey">The devCaps key</param>
         /// <param name="devCapsValue">The devCaps value</param>
         //====================================================================================================================
-        internal virtual void AddChannelDevCapsKey(Dictionary<string, string> devCaps, 
+        internal virtual void AddChannelDevCapsKey(Dictionary<string, string> devCaps,
             string component,
             string devCapsName,
             string configuration,
@@ -671,11 +812,29 @@ namespace MeasurementComputing.DAQFlex
         {
             string chCaps;
 
-            for (int channel = 0; channel < m_maxChannels; channel++)
+            int maxChannels = m_maxChannels;
+
+            if (configuration == DevCapConfigurations.DIFF)
+                maxChannels /= 2;
+
+            for (int channel = 0; channel < maxChannels; channel++)
             {
                 chCaps = component + "{" + channel.ToString() + "}:" + devCapsName;
+
+                if (configuration != "ALL")
+                    chCaps += ("/" + configuration);
+
                 devCaps.Add(chCaps, devCapsValue);
             }
+        }
+
+        //========================================================================================
+        /// <summary>
+        /// Virtual method to read in a component's calibration coefficients
+        /// </summary>
+        //========================================================================================
+        protected virtual void GetCalCoefficients()
+        {
         }
 
         //========================================================================================
@@ -685,9 +844,9 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="count">The max count</param>
         /// <returns>The resolution in bits</returns>
         //========================================================================================
-        internal virtual ulong GetResolution(ulong maxCount)
+        internal virtual int GetResolution(ulong maxCount)
         {
-            ulong resolution = 0;
+            int resolution = 0;
 
             switch (maxCount)
             {
@@ -703,8 +862,16 @@ namespace MeasurementComputing.DAQFlex
                 case (0x1FFF):
                     resolution = 13;
                     break;
+                    
+                case (0x03FFF):
+                     resolution = 14;
+                     break;
+                     
                 case (0xFFFF):
                     resolution = 16;
+                    break;
+                case (0xFFFFF):
+                    resolution = 20;
                     break;
                 case (0xFFFFFF):
                     resolution = 24;
@@ -721,6 +888,179 @@ namespace MeasurementComputing.DAQFlex
             }
 
             return resolution;
+        }
+
+        //=====================================================================================
+        /// <summary>
+        /// Calculates the sum of an array
+        /// </summary>
+        /// <param name="data">The data array</param>
+        /// <returns>The sum</returns>
+        //=====================================================================================
+        protected double GetSum(int[] data)
+        {
+            double sum = 0;
+
+            foreach (int i in data)
+            {
+                sum += (double)i;
+            }
+
+            return sum;
+        }
+
+        //=====================================================================================
+        /// <summary>
+        /// Calculates the sum of an array
+        /// </summary>
+        /// <param name="data">The data array</param>
+        /// <returns>The sum</returns>
+        //=====================================================================================
+        protected double GetSum(double[] data)
+        {
+            double sum = 0;
+
+            foreach (double d in data)
+            {
+                sum += d;
+            }
+
+            return sum;
+        }
+
+        //=====================================================================================
+        /// <summary>
+        /// Calculates the sum of an array
+        /// </summary>
+        /// <param name="data">The data array</param>
+        /// <returns>The sum</returns>
+        //=====================================================================================
+        protected double GetSqrSum(double[] data)
+        {
+            double sum = 0;
+
+            foreach (double d in data)
+            {
+                sum += (d * d);
+            }
+
+            return sum;
+        }
+
+        //=====================================================================================
+        /// <summary>
+        /// Calculates the inner product of two arrays
+        /// </summary>
+        /// <param name="array1">The first array</param>
+        /// <param name="array2">The second array</param>
+        /// <returns>The inner product</returns>
+        //=====================================================================================
+        protected double GetInnerProduct(double[] array1, int[] array2)
+        {
+            if (array1.GetLength(0) != array2.GetLength(0))
+            {
+                System.Diagnostics.Debug.Assert(array1.GetLength(0) == array2.GetLength(0));
+                return 0.0;
+            }
+
+            double init = 0.0;
+
+            for (int i = 0; i < array1.Length; i++)
+            {
+                init += array1[i] * (double)array2[i];
+            }
+
+            return init;
+        }
+
+        //=====================================================================================
+        /// <summary>
+        /// Calculates the average value of an array
+        /// </summary>
+        /// <param name="data">The data array</param>
+        /// <returns>The average</returns>
+        //=====================================================================================
+        protected double GetAverage(double[] data)
+        {
+            double sum = 0;
+
+            foreach (double d in data)
+            {
+                sum += d;
+            }
+
+            return sum / (double)data.Length;
+        }
+
+        //=====================================================================================
+        /// <summary>
+        /// Converts a 2D array to a 1D array
+        /// </summary>
+        /// <param name="data">The 2D array</param>
+        /// <param name="channel">The channel</param>
+        /// <returns>The 1D array</returns>
+        //=====================================================================================
+        protected double[] GetChannelData(double[,] data, int channel)
+        {
+            if (channel >= data.GetLength(0))
+                System.Diagnostics.Debug.Assert(false, "invalid channel specified");
+
+            int numberOfSamples = data.GetLength(1);
+
+            double[] channelData = new double[numberOfSamples];
+
+            for (int i = 0; i < numberOfSamples; i++)
+            {
+                channelData[i] = data[channel, i];
+            }
+
+            return channelData;
+        }
+
+        //=======================================================================================
+        /// <summary>
+        /// Gets the vrefs for the specified range
+        /// </summary>
+        /// <param name="range"></param>
+        /// <returns></returns>
+        //=======================================================================================
+        protected double HexStringToDouble(string hexString)
+        {
+            byte[] b = new byte[hexString.Length / 2];
+
+            for (int ii = (hexString.Length - 2), j = 0; ii >= 0; ii -= 2, j++)
+            //for (int ii=0, j = 0; ii<hexString.Length; ii+=2, j++)
+            {
+                b[j] = byte.Parse(hexString.Substring(ii, 2), NumberStyles.HexNumber);
+            }
+            double d = BitConverter.ToDouble(b, 0);
+
+            return d;
+        }
+
+        //=======================================================================================
+        /// <summary>
+        /// Gets the vrefs for the specified range
+        /// </summary>
+        /// <param name="range"></param>
+        /// <returns></returns>
+        //=======================================================================================
+        protected string DoubleToHexString(double d)
+        {
+            string s = "0x";
+
+            unsafe
+            {
+                double* pDouble = &d;
+                byte* pByte = (byte*)pDouble;
+
+                for (int i = 7; i >= 0; i--)
+                {
+                    s += string.Format("{0:X2}", *(pByte + i));
+                }
+            }
+
+            return s;
         }
 
 #endregion

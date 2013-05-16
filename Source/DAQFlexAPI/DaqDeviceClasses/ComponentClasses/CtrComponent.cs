@@ -23,7 +23,7 @@ namespace MeasurementComputing.DAQFlex
 {
     internal class CtrComponent : IoComponent
     {
-        protected int[] m_dataWidths;
+        protected uint[] m_counterWidths;
         protected CounterTypes[] m_counterTypes;
 
         //=================================================================================================================
@@ -36,6 +36,25 @@ namespace MeasurementComputing.DAQFlex
         public CtrComponent(DaqDevice daqDevice, DeviceInfo deviceInfo, int maxChannels)
             : base(daqDevice, deviceInfo, maxChannels)
         {
+            m_counterWidths = new uint[m_maxChannels];
+            m_counterTypes = new CounterTypes[m_maxChannels];
+        }
+
+        //====================================================================================
+        /// <summary>
+        /// Default implementation for initializing counters
+        /// Start them by default
+        /// </summary>
+        //====================================================================================
+        internal override void Initialize()
+        {
+            for (int i = 0; i < m_maxChannels; i++)
+            {
+                string type = m_daqDevice.GetDevCapsString(String.Format("CTR{0}:TYPE", MessageTranslator.GetChannelSpecs(i)), true);
+
+                m_counterTypes[i] = (CounterTypes)Enum.Parse(typeof(CounterTypes), type, true);
+                m_counterWidths[i] = (uint)m_daqDevice.GetDevCapsValue(String.Format("CTR{0}:MAXCOUNT", MessageTranslator.GetChannelSpecs(i)));
+            }
         }
 
         //=================================================================================================================
@@ -81,7 +100,7 @@ namespace MeasurementComputing.DAQFlex
                 errorCode = ValidateChannel(ref message);
             }
 
-            if (errorCode == ErrorCodes.NoErrors && !message.Contains(Constants.QUERY.ToString()) && message.Contains(DaqProperties.VALUE))
+            if (errorCode == ErrorCodes.NoErrors && message.Contains(DaqProperties.VALUE) && message.Contains(Constants.EQUAL_SIGN))
             {
                 errorCode = ValidateCount(ref message);
             }
@@ -118,9 +137,10 @@ namespace MeasurementComputing.DAQFlex
             try
             {
                 int channel = MessageTranslator.GetChannel(message);
-                int count = Int32.Parse(MessageTranslator.GetPropertyValue(message));
+                int count;
+                PlatformParser.TryParse(MessageTranslator.GetPropertyValue(message), out count);
 
-                if (count < 0 || count > m_dataWidths[channel])
+                if (count < 0 || count > m_counterWidths[channel])
                     return ErrorCodes.InvalidCountValueSpecified;
 
                 return ErrorCodes.NoErrors;
@@ -128,35 +148,6 @@ namespace MeasurementComputing.DAQFlex
             catch (Exception)
             {
                 return ErrorCodes.InvalidCountValueSpecified;
-            }
-        }
-
-        //====================================================================================
-        /// <summary>
-        /// Default implementation for initializing counters
-        /// Start them by default
-        /// </summary>
-        //====================================================================================
-        internal override void Initialize()
-        {
-            try
-            {
-                int counters = (int)m_daqDevice.SendMessage("@CTR:CHANNELS").ToValue();
-
-                if (counters > 0)
-                {
-                    string msg;
-
-                    for (int i = 0; i < counters; i++)
-                    {
-                        msg = DaqComponents.CTR + "{" + i.ToString() + "}:START";
-                        m_daqDevice.SendMessage(msg);
-                    }
-                }
-            }
-            catch (Exception)
-            {
-                // no counters
             }
         }
     }

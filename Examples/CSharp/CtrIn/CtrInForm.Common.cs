@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Windows.Forms;
 using MeasurementComputing.DAQFlex;
 
 namespace CtrIn
@@ -9,7 +10,6 @@ namespace CtrIn
     {
         private DaqDevice Device;
         private DaqResponse Response;
-        //private string ChannelSpec = "{0}";
 
         protected override void OnLoad(EventArgs e)
         {
@@ -24,32 +24,10 @@ namespace CtrIn
                         deviceComboBox.Items.Add(name);
 
                     deviceComboBox.SelectedIndex = 0;
-
-                    // Get number of supported channels
-                    DaqResponse response = Device.SendMessage("@CTR:CHANNELS");
-
-                    if (!response.ToString().Contains("NOT_SUPPORTED"))
-                    {
-                        int channels = (int)response.ToValue();
-
-                        for (int i = 0; i < channels; i++)
-                            counterComboBox.Items.Add(i.ToString());
-
-                        counterComboBox.SelectedIndex = 0;
-
-                        // Initialize the timer
-                        timer1.Interval = 500;
-                        timer1.Enabled = false;
-                    }
-                    else
-                    {
-                        DisableControls();
-                        statusLabel.Text = "The selected device does not have a counter";
-                    }
                 }
                 else
                 {
-                    DisableControls();
+                    EnableControls(false);
                     statusLabel.Text = "No devices detected!";
                 }
             }
@@ -59,6 +37,37 @@ namespace CtrIn
             }
 
             base.OnLoad(e);
+        }
+
+        private void InitializeControls()
+        {
+            // Get number of supported channels
+            DaqResponse response = Device.SendMessage("@CTR:CHANNELS");
+
+            if (!response.ToString().Contains("NOT_SUPPORTED"))
+            {
+                EnableControls(true);
+
+                int channels = (int)response.ToValue();
+
+                counterComboBox.Items.Clear();
+
+                for (int i = 0; i < channels; i++)
+                    counterComboBox.Items.Add(i.ToString());
+
+                counterComboBox.SelectedIndex = 0;
+
+                // Initialize the timer
+                timer1.Interval = 500;
+                timer1.Enabled = false;
+
+                statusLabel.Text = String.Empty;
+            }
+            else
+            {
+                EnableControls(false);
+                statusLabel.Text = "The selected device does not have a counter";
+            }
         }
 
         private void OnDeviceChanged(object sender, EventArgs e)
@@ -72,12 +81,30 @@ namespace CtrIn
                 string name = deviceComboBox.SelectedItem.ToString();
 
                 // Create a new device object
+                Cursor.Current = Cursors.WaitCursor;
                 Device = DaqDeviceManager.CreateDevice(name);
+
+                InitializeControls();
+
+                Cursor.Current = Cursors.Default;
             }
             catch (Exception ex)
             {
                 statusLabel.Text = ex.Message;
             }
+        }
+
+        private void OnCounterChanged(object sender, EventArgs e)
+        {
+            string message;
+            string counter;
+
+            // Reset the counter 
+            counter = counterComboBox.SelectedItem.ToString(); 
+            
+            message = "CTR{*}:VALUE=0";
+            message = message.Replace("*", counter);
+            Device.SendMessage(message);
         }
 
         private void OnStartButtonClicked(object sender, EventArgs e)
@@ -86,11 +113,20 @@ namespace CtrIn
 
             try
             {
+                string counter = counterComboBox.SelectedItem.ToString();
+
                 string message;
-                message = String.Format("CTR{{0}}:VALUE=0", counterComboBox.SelectedIndex);
+
+                message = "CTR{*}:START";
+                message = message.Replace("*", counter);
                 Device.SendMessage(message);
-                message = String.Format("CTR{{0}}:START", counterComboBox.SelectedIndex);
-                Device.SendMessage(message);
+
+                // get an immediate reading
+                message = "?CTR{*}:VALUE";
+                message = message.Replace("*", counter);
+                Response = Device.SendMessage(message);
+                responseTextBox.Text = Response.ToString();
+                statusLabel.Text = String.Empty;
             }
             catch (Exception ex)
             {
@@ -105,7 +141,11 @@ namespace CtrIn
 
             try
             {
-                string message = String.Format("CTR{{0}}:STOP", counterComboBox.SelectedIndex);
+                string counter = counterComboBox.SelectedItem.ToString();
+
+                string message;
+                message = "CTR{*}:STOP";
+                message = message.Replace("*", counter);
                 Device.SendMessage(message);
             }
             catch (Exception ex)
@@ -118,8 +158,12 @@ namespace CtrIn
         {
             try
             {
-                // Read the AI channel 
-                string message = String.Format("?CTR{{0}}:VALUE", counterComboBox.SelectedIndex);
+                string counter = counterComboBox.SelectedItem.ToString();
+
+                // read the channel value
+                string message;
+                message = "?CTR{*}:VALUE";
+                message = message.Replace("*", counter);
                 Response = Device.SendMessage(message);
                 responseTextBox.Text = Response.ToString();
                 statusLabel.Text = String.Empty;
@@ -130,11 +174,11 @@ namespace CtrIn
             }
         }
 
-        private void DisableControls()
+        private void EnableControls(bool enableState)
         {
-            counterComboBox.Enabled = false;
-            startButton.Enabled = false;
-            stopButton.Enabled = false;
+            counterComboBox.Enabled = enableState;
+            startButton.Enabled = enableState;
+            stopButton.Enabled = enableState;
         }
     }
 }

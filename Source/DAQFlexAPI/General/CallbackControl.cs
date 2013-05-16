@@ -34,6 +34,7 @@ namespace MeasurementComputing.DAQFlex
         private int m_numberOfSamples;
         private CallbackType m_type;
         private bool m_abort;
+        private bool m_executeOnUIThread = true;
 
         //========================================================================================================
         /// <summary>
@@ -47,6 +48,36 @@ namespace MeasurementComputing.DAQFlex
         {
             InitializeComponent();
             m_daqDevice = daqDevice;
+            
+            if (type == CallbackType.OnDataAvailable)
+            {
+                try
+                {
+                    m_numberOfSamples = (int)callbackData;
+                }
+                catch (Exception)
+                {
+                    System.Diagnostics.Debug.Assert(false, "OnDataAvailable callback data is not the correct data type");
+                }
+            }
+
+            m_callback = callback;
+            m_type = type;
+        }
+
+        //========================================================================================================
+        /// <summary>
+        /// ctor - for use with setting up a callback for an input scan 
+        /// </summary>
+        /// <param name="daqDevice">A DaqDevice object</param>
+        /// <param name="numberOfSamples">The number of samples to pass to each callback </param>
+        /// <param name="callback">A InputScanCallbackDelegate</param>
+        //========================================================================================================
+        internal CallbackControl(DaqDevice daqDevice, InputScanCallbackDelegate callback, CallbackType type, object callbackData, bool executeOnUIThread)
+        {
+            InitializeComponent();
+            m_daqDevice = daqDevice;
+            m_executeOnUIThread = executeOnUIThread;
 
             if (type == CallbackType.OnDataAvailable)
             {
@@ -90,6 +121,7 @@ namespace MeasurementComputing.DAQFlex
         internal int NumberOfSamples
         {
             get { return m_numberOfSamples; }
+            set { m_numberOfSamples = value; }
         }
 
         //================================================================================================================
@@ -113,6 +145,11 @@ namespace MeasurementComputing.DAQFlex
             set { m_abort = value; }
         }
 
+        internal bool ExecuteOnUIThread
+        {
+            get { return m_executeOnUIThread; }
+            set { m_executeOnUIThread = value; }
+        }
 
 #if WindowsCE
         internal bool Created

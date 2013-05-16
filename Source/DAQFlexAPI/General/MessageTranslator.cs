@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Globalization;
 
 namespace MeasurementComputing.DAQFlex
 {
@@ -119,7 +120,7 @@ namespace MeasurementComputing.DAQFlex
         //========================================================================
         internal static int GetChannel(string message)
         {
-            int channel = 0;
+            int channel = -1;
 
             if (message.Contains(DaqProperties.HIGHCHAN) || message.Contains(DaqProperties.LOWCHAN))
             {
@@ -168,7 +169,20 @@ namespace MeasurementComputing.DAQFlex
             string elementText;
             int elementNumber;
 
-            if (lIndex > 0 && rIndex > 0)
+            if (message.Contains("AIQUEUE"))
+            {
+                elementText = message.Substring(lIndex + 1, rIndex - lIndex - 1);
+
+                try
+                {
+                    elementNumber = Convert.ToInt32(elementText);
+                }
+                catch (Exception)
+                {
+                    elementNumber = -1;
+                }
+            }
+            else if (lIndex > 0 && rIndex > 0)
             {
                 if (fsIndex > 0)
                 {
@@ -247,20 +261,17 @@ namespace MeasurementComputing.DAQFlex
                 int lIndex;
                 int rIndex;
 
-                try
-                {
-                    lIndex = message.IndexOf(CurlyBraces.LEFT);
+                lIndex = message.IndexOf(CurlyBraces.LEFT);
 
-                    if (message.Contains(Constants.VALUE_RESOLVER.ToString()))
-                        rIndex = message.IndexOf(Constants.VALUE_RESOLVER);
-                    else
-                        rIndex = message.IndexOf(CurlyBraces.RIGHT);
+                if (message.Contains(Constants.VALUE_RESOLVER.ToString()))
+                    rIndex = message.IndexOf(Constants.VALUE_RESOLVER);
+                else
+                    rIndex = message.IndexOf(CurlyBraces.RIGHT);
 
-                    port = Convert.ToInt32(message.Substring(lIndex + 1, rIndex - (lIndex + 1)));
-                }
-                catch (Exception)
-                {
-                }
+                string portPart = message.Substring(lIndex + 1, rIndex - (lIndex + 1));
+
+                if (!PlatformParser.TryParse(portPart, out port))
+                    port = -1;
             }
 
             return port;
@@ -273,29 +284,48 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="message">The message</param>
         /// <returns>The port number</returns>
         //========================================================================
-        internal static int GetBit(string message)
+        internal static double GetBit(string message)
         {
-            int bit = -1;
+            double bit = -1;
 
             if (message.Contains(CurlyBraces.LEFT.ToString()) && message.Contains(CurlyBraces.RIGHT.ToString()))
             {
-                int lIndex;
-                int rIndex;
+                int lIndex = message.IndexOf(Constants.VALUE_RESOLVER);
+                int rIndex = message.IndexOf(CurlyBraces.RIGHT);
 
-                try
+                if (lIndex >= 0 && lIndex < rIndex)
                 {
-                    lIndex = message.IndexOf(Constants.VALUE_RESOLVER);
-                    rIndex = message.IndexOf(CurlyBraces.RIGHT);
+                    string bitPart = message.Substring(lIndex + 1, rIndex - (lIndex + 1));
 
-                    bit = Convert.ToInt32(message.Substring(lIndex + 1, rIndex - (lIndex + 1)));
-                }
-                catch (Exception)
-                {
+                    if (!PlatformParser.TryParse(bitPart, out bit))
+                        bit = -1;
                 }
             }
 
             return bit;
         }
+
+        //============================================================================
+        /// <summary>
+        /// Extracts the property name from property set messages
+        /// </summary>
+        /// <param name="message">The message</param>
+        /// <returns>The property name</returns>
+        //============================================================================
+        internal static string GetPropertyName(string message)
+        {
+            string property = String.Empty;
+
+            if (message[0] != Constants.QUERY && message.Contains(Constants.EQUAL_SIGN))
+            {
+                int equalIndex = message.IndexOf(Constants.EQUAL_SIGN);
+
+                property = message.Substring(0, equalIndex);
+            }
+
+            return property;
+        }
+
         //============================================================================
         /// <summary>
         /// Extracts the property value from a query message
@@ -381,6 +411,62 @@ namespace MeasurementComputing.DAQFlex
                 return message.Remove(startIndex, length - startIndex);
             else
                 return message;
+        }
+
+        //=====================================================================================
+        /// <summary>
+        /// Removes the property resolver part of a message
+        /// e.g. message = "?AI{0}:VALUE/VOLTS" return = "?AI{0}:VALUE"
+        /// </summary>
+        /// <param name="message">The message</param>
+        /// <returns>The message without the value resolver part</returns>
+        //=====================================================================================
+        internal static string ConvertToCurrentCulture(string value)
+        {
+            string dec = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
+            value = value.Replace(Constants.DECIMAL, dec);
+
+            return value;
+        }
+
+        //=========================================================================
+        /// <summary>
+        /// Converts values for internal use to be used with constants such as
+        /// PropertyValues.BIP2PT5V
+        /// </summary>
+        /// <param name="value">The value to be converted</param>
+        /// <returns>The converted value</returns>
+        //=========================================================================
+        internal static string ConvertToEnglish(string value)
+        {
+            string dec = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
+            value = value.Replace(dec, Constants.DECIMAL);
+
+            return value;
+        }
+
+        //=========================================================================
+        /// <summary>
+        /// Replaces the value part of a response to a query message
+        /// </summary>
+        /// <param name="value">The original response</param>
+        /// <returns>The new response</returns>
+        //=========================================================================
+        internal static string ReplaceValue(string response, string newValue)
+        {
+            int indexOfEquals = response.IndexOf(Constants.EQUAL_SIGN);
+
+            if (indexOfEquals >= 0)
+            {
+                string newResponse;
+                newResponse = response.Remove(indexOfEquals + 1, response.Length - indexOfEquals - 1);
+                newResponse += newValue;
+                return newResponse;
+            }
+            else
+            {
+                return response;
+            }
         }
 
         //=========================================================================

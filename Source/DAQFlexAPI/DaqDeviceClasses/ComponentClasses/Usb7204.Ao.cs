@@ -33,15 +33,8 @@ namespace MeasurementComputing.DAQFlex
         public Usb7204Ao(DaqDevice daqDevice, DeviceInfo deviceInfo)
             : base(daqDevice, deviceInfo, 2)
         {
-            m_dataWidth = 12;
-            m_maxCount = (int)Math.Pow(2, m_dataWidth) - 1;
-            m_maxThroughput = 10000;
-
             if (m_daqDevice.FirmwareVersion < 2.0)
                 m_aoScanSupported = false;
-
-            InitializeRanges();
-            SetDefaultCriticalParams(deviceInfo);
         }
 
         //=================================================================================================================
@@ -51,84 +44,30 @@ namespace MeasurementComputing.DAQFlex
         //=================================================================================================================
         internal override void InitializeRanges()
         {
-            m_supportedRanges.Add(PropertyValues.UNI4PT096V, new Range(4.096, 0.0));
+            m_supportedRanges.Add(MessageTranslator.ConvertToCurrentCulture(PropertyValues.UNI4PT096V), new Range(4.096, 0.0));
+
+            m_daqDevice.CriticalParams.CalibrateAoData = false;
 
             for (int i = 0; i < m_channelCount; i++)
-                m_ranges[i] = String.Format("{0}{1}:{2}={3}", DaqComponents.AO, MessageTranslator.GetChannelSpecs(i), DaqProperties.RANGE, PropertyValues.UNI4PT096V);
+                m_ranges[i] = String.Format("{0}{1}:{2}={3}", DaqComponents.AO, MessageTranslator.GetChannelSpecs(i), DaqProperties.RANGE, MessageTranslator.ConvertToCurrentCulture(PropertyValues.UNI4PT096V));
         }
 
-        //===========================================================================================
+        //========================================================================================
         /// <summary>
-        /// Overriden to set the default critical params
+        /// Overriden to read set default coefficients of slope = 1.0 and offset = 0.0
         /// </summary>
-        //===========================================================================================
-        internal override void SetDefaultCriticalParams(DeviceInfo deviceInfo)
+        //========================================================================================
+        protected override void GetCalCoefficients()
         {
-            m_daqDevice.DriverInterface.CriticalParams.AoDataWidth = m_dataWidth;
-            m_daqDevice.DriverInterface.CriticalParams.OutputPacketSize = deviceInfo.MaxPacketSize;
-            m_daqDevice.DriverInterface.CriticalParams.OutputFifoSize = 1024;
+            m_calCoeffs.Clear();
 
-            m_daqDevice.DriverInterface.CriticalParams.LowAoChannel = 0;
-            m_daqDevice.DriverInterface.CriticalParams.HighAoChannel = 0;
-            m_daqDevice.DriverInterface.CriticalParams.OutputScanRate = 1000;
-            m_daqDevice.DriverInterface.CriticalParams.OutputScanSamples = 1000;
-        }
-
-        internal override void Initialize()
-        {
-            base.Initialize();
-
-            if (m_aoScanSupported)
+            foreach (KeyValuePair<string, Range> kvp in m_supportedRanges)
             {
-                m_daqDevice.SendMessage("AOSCAN:LOWCHAN=" + m_daqDevice.DriverInterface.CriticalParams.LowAoChannel.ToString());
-                m_daqDevice.SendMessage("AOSCAN:HIGHCHAN=" + m_daqDevice.DriverInterface.CriticalParams.HighAoChannel.ToString());
-                m_daqDevice.SendMessage("AOSCAN:RATE=" + m_daqDevice.DriverInterface.CriticalParams.OutputScanRate.ToString());
-                m_daqDevice.SendMessage("AOSCAN:SAMPLES=" + m_daqDevice.DriverInterface.CriticalParams.OutputScanSamples.ToString());
+                for (int i = 0; i < m_channelCount; i++)
+                {
+                    m_calCoeffs.Add(String.Format("Ch{0}:{1}", i, kvp.Key), new CalCoeffs(1.0, 0.0));
+                }
             }
-        }
-
-        //===================================================================================================
-        /// <summary>
-        /// Overriden to get the supported messages specific to this Dio component
-        /// </summary>
-        /// <param name="daqComponent">The Daq Component name - not all implementations require this</param>
-        /// <returns>A list of supported messages</returns>
-        //===================================================================================================
-        internal override List<string> GetMessages(string daqComponent)
-        {
-            List<string> messages = new List<string>();
-
-            if (daqComponent == DaqComponents.AO)
-            {
-                messages.Add("AO:SCALE=*");
-                messages.Add("AO{*}:VALUE=*");
-                messages.Add("?AO");
-                messages.Add("?AO:SCALE");
-                messages.Add("?AO{*}:RANGE");
-            }
-            else if (daqComponent == DaqComponents.AOSCAN && m_aoScanSupported)
-            {
-                messages.Add("AOSCAN:LOWCHAN=*");
-                messages.Add("AOSCAN:HIGHCHAN=*");
-                messages.Add("AOSCAN:RATE=*");
-                messages.Add("AOSCAN:SAMPLES=*");
-                messages.Add("AOSCAN:SCALE=*");
-                messages.Add("AOSCAN:BUFSIZE=*");
-                messages.Add("AOSCAN:START");
-                messages.Add("AOSCAN:STOP");
-
-                messages.Add("?AOSCAN:LOWCHAN");
-                messages.Add("?AOSCAN:HIGHCHAN");
-                messages.Add("?AOSCAN:RATE");
-                messages.Add("?AOSCAN:SAMPLES");
-                messages.Add("?AOSCAN:SCALE");
-                messages.Add("?AOSCAN:BUFSIZE");
-                messages.Add("?AOSCAN:STATUS");
-                messages.Add("?AOSCAN:COUNT");
-                messages.Add("?AOSCAN:INDEX");
-            }
-
-            return messages;
         }
 
         //=================================================================================================================
@@ -144,23 +83,6 @@ namespace MeasurementComputing.DAQFlex
                 return base.PreprocessAoScanMessage(ref message);
 
             return ErrorCodes.InvalidMessage;
-        }
-
-        //===========================================================================================
-        /// <summary>
-        /// Validates the cal message
-        /// </summary>
-        /// <param name="message">The message</param>
-        /// <returns>An error code</returns>
-        //===========================================================================================
-        internal override ErrorCodes ProcessCalMessage(ref string message)
-        {
-            return ErrorCodes.InvalidMessage;
-        }
-
-        internal override double GetMaxScanRate()
-        {
-            return m_maxThroughput / m_daqDevice.DriverInterface.CriticalParams.AoChannelCount;
         }
     }
 }

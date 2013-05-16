@@ -20,6 +20,9 @@ namespace TempView
     //=====================================================================================
     public class Graph
     {
+        public const int VALUE_OUT_OF_RANGE = -8888;
+        public const int OPEN_THERMOCOUPLE = -9999;
+
         protected Graphics m_surface;
         protected Image m_image;
         protected PictureBox m_targetImage;
@@ -219,10 +222,10 @@ namespace TempView
                 }
             }
 
-            if (currentValue > m_maxYValue)
+            if (currentValue > m_maxYValue && currentValue != VALUE_OUT_OF_RANGE && currentValue != OPEN_THERMOCOUPLE)
                 m_maxYValue = currentValue;
 
-            if (currentValue < m_minYValue)
+            if (currentValue < m_minYValue && currentValue != VALUE_OUT_OF_RANGE && currentValue != OPEN_THERMOCOUPLE)
                 m_minYValue = currentValue;
 
             CalculateYAxisScale();

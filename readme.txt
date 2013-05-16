@@ -114,11 +114,14 @@ Building the DAQFlex example applications:
 	$ ain
 	$ ainscan
 	$ ainscanwithcallback
+	$ ainscanwithqueue
+	$ ainscanwithtrigger
 	$ aout
 	$ aoutscan
 	$ ctrin
 	$ din
 	$ dout
+	$ pulsetimer
 	$ tempview
 
 Note: The DAQFlex test and example project files are configured to look for the DAQFlex API assembly

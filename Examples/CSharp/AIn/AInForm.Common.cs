@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Windows.Forms;
+using System.Globalization;
 using MeasurementComputing.DAQFlex;
 
 namespace AIn
@@ -25,43 +26,10 @@ namespace AIn
                         deviceComboBox.Items.Add(name);
 
                     deviceComboBox.SelectedIndex = 0;
-
-                    // Get number of supported channels
-                    DaqResponse response = Device.SendMessage("@AI:CHANNELS");
-
-                    if (!response.ToString().Contains("NOT_SUPPRORTED"))
-                    {
-                        int channels = (int)response.ToValue();
-
-                        for (int i = 0; i < channels; i++)
-                            channelComboBox.Items.Add(i.ToString());
-
-                        channelComboBox.SelectedIndex = 0;
-
-                        // Get supported ranges for the selected channel
-                        string msg = String.Format("@AI{{0}}:RANGES", channelComboBox.SelectedIndex);
-                        string ranges = Device.SendMessage(msg).ToString();
-                        ranges = ranges.Substring(ranges.IndexOf('%') + 1);
-                        string[] rangeList = ranges.Split(new char[] { ',' });
-
-                        foreach (string range in rangeList)
-                            rangeComboBox.Items.Add(range);
-
-                        rangeComboBox.SelectedIndex = 0;
-
-                        // Initialize the timer
-                        timer1.Interval = 500;
-                        timer1.Enabled = false;
-                    }
-                    else
-                    {
-                        DisabelControls();
-                        statusLabel.Text = "The selected device does not support analog input!";
-                    }
                 }
                 else
                 {
-                    DisabelControls();
+                    EnableControls(false);
                     statusLabel.Text = "No devices detected!";
                 }
             }
@@ -85,6 +53,8 @@ namespace AIn
 
                 // Create a new device object
                 Device = DaqDeviceManager.CreateDevice(name);
+
+                InitializeControls();
             }
             catch (Exception ex)
             {
@@ -104,9 +74,12 @@ namespace AIn
             try
             {
                 // Send the AI Range message
-                string rangeValue = rangeComboBox.SelectedItem.ToString();
-                string message = "AI" + ChannelSpec + ":RANGE=" + rangeValue;
-                Device.SendMessage(message);
+                if (rangeComboBox.Items.Count > 1)
+                {
+                    string rangeValue = rangeComboBox.SelectedItem.ToString();
+                    string message = "AI" + ChannelSpec + ":RANGE=" + rangeValue;
+                    Device.SendMessage(message);
+                }
             }
             catch (Exception ex)
             {
@@ -140,12 +113,61 @@ namespace AIn
             }
         }
 
-        private void DisabelControls()
+        private void InitializeControls()
         {
-            channelComboBox.Enabled = false;
-            rangeComboBox.Enabled = false;
-            startButton.Enabled = false;
-            stopButton.Enabled = false;
+            // Get number of supported channels
+            int channels;
+            DaqResponse response;
+
+            response = Device.SendMessage("@AI:CHANNELS");
+
+            if (!response.ToString().Contains("NOT_SUPORTED"))
+            {
+                channels = (int)response.ToValue();
+
+                channelComboBox.Items.Clear();
+
+                for (int i = 0; i < channels; i++)
+                    channelComboBox.Items.Add(i);
+
+                channelComboBox.SelectedIndex = 0;
+
+                // get supported ranges
+                string ranges;
+                string[] rangeList;
+                            
+                ranges = Device.SendMessage("@AI{0}:RANGES").ToString();
+                ranges = ranges.Substring(ranges.IndexOf("%") + 1);
+                rangeList = ranges.Split(CultureInfo.CurrentCulture.TextInfo.ListSeparator.ToCharArray());
+
+                rangeComboBox.Items.Clear();
+
+                for (int i = 0; i < rangeList.Length; i++)
+                    rangeComboBox.Items.Add(rangeList[i]);
+
+                rangeComboBox.SelectedIndex = 0;
+
+                // Initialize the timer
+                timer1.Interval = 500;
+                timer1.Enabled = false;
+
+                statusLabel.Text = String.Empty;
+
+                EnableControls(true);
+            }
+            else
+            {
+                EnableControls(false);
+                statusLabel.Text = "The selected device does not support analog input!";
+            }
+        }
+
+        private void EnableControls(bool enabledState)
+        {
+            channelComboBox.Enabled = enabledState;
+            rangeComboBox.Enabled = enabledState;
+            startButton.Enabled = enabledState;
+            stopButton.Enabled = enabledState;
         }
     }
 }

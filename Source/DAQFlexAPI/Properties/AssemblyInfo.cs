@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
 [assembly: AssemblyTitle("DAQFlex API")]
-[assembly: AssemblyDescription("API for flexible data acquisition devices")]
+[assembly: AssemblyDescription("Open-source, cross-platform DAQ API")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Measurement Computing")]
 [assembly: AssemblyProduct("DAQFlex API")]
@@ -32,9 +32,9 @@ using System.Runtime.InteropServices;
 // You can specify all the values or you can default the Build and Revision Numbers 
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("2.1.0.0")]
+[assembly: AssemblyVersion("3.1.0.0")]
 #if !WindowsCE
-[assembly: AssemblyFileVersion("2.1.0.0")]
+[assembly: AssemblyFileVersion("3.1.0.0")]
 #endif
 
 // use "sn -Tp assemblyname >> publickey.txt" to extract the public key.

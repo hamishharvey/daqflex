@@ -22,6 +22,8 @@ namespace MeasurementComputing.DAQFlex.Test
                 dioMessageComboBox.Enabled = true;
                 dioSendMessageButton.Enabled = true;
 
+                commands.Sort();
+
                 foreach (string command in commands)
                     dioMessageComboBox.Items.Add(command);
 
@@ -53,10 +55,14 @@ namespace MeasurementComputing.DAQFlex.Test
 #endif
                 DaqResponse response = m_daqDevice.SendMessage(message);
 
-                if (dioTextRadioButton.Checked)
-                    dioResponseTextBox.Text = response.ToString();
+                dioResponseTextBox.Text = response.ToString();
+
+                double numericResponse = response.ToValue();
+
+                if (!Double.IsNaN(numericResponse))
+                    dioNumericResponseTextBox.Text = numericResponse.ToString();
                 else
-                    dioResponseTextBox.Text = response.ToValue().ToString();
+                    dioNumericResponseTextBox.Text = String.Empty;
 
                 statusLabel.Text = "Success";
             }
@@ -67,29 +73,6 @@ namespace MeasurementComputing.DAQFlex.Test
                 // be displayed by the status label
                 dioResponseTextBox.Text = String.Empty;
                 statusLabel.Text = ex.Message;
-            }
-        }
-
-        //==============================================================================
-        /// <summary>
-        /// This enables the radio buttons when the message is for querying the Value property
-        /// This allows the value property to be returned as text or as a numeric
-        /// </summary>
-        /// <param name="sender">The control that raised the event</param>
-        /// <param name="e">The event args</param>
-        //==============================================================================
-        private void OnDioMessageChanged(object sender, EventArgs e)
-        {
-            if (dioMessageComboBox.Text.Contains("?") && dioMessageComboBox.Text.Contains("VALUE"))
-            {
-                dioTextRadioButton.Enabled = true;
-                dioNumericRadioButton.Enabled = true;
-            }
-            else
-            {
-                dioTextRadioButton.Checked = true;
-                dioTextRadioButton.Enabled = false;
-                dioNumericRadioButton.Enabled = false;
             }
         }
     }

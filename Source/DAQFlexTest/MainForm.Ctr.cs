@@ -22,6 +22,8 @@ namespace MeasurementComputing.DAQFlex.Test
                 ctrMessageComboBox.Enabled = true;
                 ctrSendMessageButton.Enabled = true;
 
+                commands.Sort();
+
                 foreach (string command in commands)
                     ctrMessageComboBox.Items.Add(command);
 
@@ -58,10 +60,14 @@ namespace MeasurementComputing.DAQFlex.Test
 
                 DaqResponse response = m_daqDevice.SendMessage(message);
 
-                if (ctrTextRadioButton.Checked)
-                    ctrResponseTextBox.Text = response.ToString();
+                ctrResponseTextBox.Text = response.ToString();
+
+                double numericResponse = response.ToValue();
+
+                if (!Double.IsNaN(numericResponse))
+                    ctrNumericResponseTextBox.Text = numericResponse.ToString();
                 else
-                    ctrResponseTextBox.Text = response.ToValue().ToString();
+                    ctrNumericResponseTextBox.Text = String.Empty;
 
                 statusLabel.Text = "Success";
             }
@@ -72,29 +78,6 @@ namespace MeasurementComputing.DAQFlex.Test
                 // be displayed by the status label
                 ctrResponseTextBox.Text = String.Empty;
                 statusLabel.Text = ex.Message;
-            }
-        }
-
-        //==============================================================================
-        /// <summary>
-        /// This enables the radio buttons when the message is for querying the Value property
-        /// This allows the value property to be returned as text or as a numeric
-        /// </summary>
-        /// <param name="sender">The control that raised the event</param>
-        /// <param name="e">The event args</param>
-        //==============================================================================
-        private void OnCtrMessageChanged(object sender, EventArgs e)
-        {
-            if (ctrMessageComboBox.Text.Contains("?") && ctrMessageComboBox.Text.Contains("VALUE"))
-            {
-                ctrTextRadioButton.Enabled = true;
-                ctrNumericRadioButton.Enabled = true;
-            }
-            else
-            {
-                ctrTextRadioButton.Checked = true;
-                ctrTextRadioButton.Enabled = false;
-                ctrNumericRadioButton.Enabled = false;
             }
         }
     }

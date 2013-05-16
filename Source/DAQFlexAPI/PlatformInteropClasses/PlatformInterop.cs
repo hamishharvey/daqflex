@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
+using System.Globalization;
 
 namespace MeasurementComputing.DAQFlex
 {
@@ -26,20 +27,22 @@ namespace MeasurementComputing.DAQFlex
         static protected int deviceNumber = 0;
 
         protected DeviceInfo m_deviceInfo;
-        protected SampleMode m_inputSampleMode = SampleMode.Finite;
-        protected Mutex m_completionMutex = new Mutex();
+        protected Object m_inputTransferCompletionLock = new Object();
+        protected Object m_outputTransferCompletionLock = new Object();
+        protected Object m_stopInputTransferLock = new Object();
+        protected Object m_stopOutputTransferLock = new Object();
         protected int m_maxTransferSize;
         protected volatile bool m_stopInputTransfers = false;
         protected volatile bool m_stopOutputTransfers = false;
         protected ErrorCodes m_errorCode;
+        protected ErrorCodes m_inputScanErrorCode;
+        protected ErrorCodes m_outputScanErrorCode;
         protected CriticalParams m_criticalParams;
         protected bool m_deviceInitialized;
         protected ASCIIEncoding m_ae = new ASCIIEncoding();
         protected Mutex m_controlTransferMutex = new Mutex();
-        //protected System.Diagnostics.Stopwatch m_statusStopWatch = new System.Diagnostics.Stopwatch();
         protected double m_stopWatchResolution;
-        protected Mutex m_stopInputTransferMutex = new Mutex();
-        protected Mutex m_stopOutputTransferMutex = new Mutex();
+
 		protected bool m_inputTransfersComplete;
         protected bool m_outputTransfersComplete;
         protected bool m_inputScanTriggered = false;
@@ -49,10 +52,8 @@ namespace MeasurementComputing.DAQFlex
 
     	protected bool m_readyToStartOutputScan = false;
 		protected bool m_readyToSubmitRemainingOutputTransfers = false;
-
-        internal int NumberOfInputRequestsSubmitted;
-        internal int NumberOfInputRequestsCompleted;
-        internal int TotalNumberOfInputRequests;
+        protected static string m_localListSeparator;
+        protected static string m_localNumberDecimalSeparator;
 
         //=========================================================================================================
         /// <summary>
@@ -64,6 +65,9 @@ namespace MeasurementComputing.DAQFlex
         {
             PlatformID platFormID = Environment.OSVersion.Platform;
 
+            m_localListSeparator = CultureInfo.CurrentCulture.TextInfo.ListSeparator;
+            m_localNumberDecimalSeparator = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
+
 #if WindowsCE
             return new WinCeUsbInterop();
 #else
@@ -73,11 +77,33 @@ namespace MeasurementComputing.DAQFlex
             }
             else if (platFormID == PlatformID.Win32NT)
             {
-                return new WinUsbInterop();
+                //return new WinUsbInterop();
+                return new McUsbInterop();
             }
             return null;
 #endif
         }
+        
+        
+#if !WindowsCE
+        internal static HidPlatformInterop GetHidPlatformInterop(){
+           PlatformID platFormID = Environment.OSVersion.Platform;
+
+           m_localListSeparator = CultureInfo.CurrentCulture.TextInfo.ListSeparator;
+           m_localNumberDecimalSeparator = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
+
+           if (platFormID == PlatformID.Unix) {
+              return null;//new LibUsbInterop();
+              }
+           else if (platFormID == PlatformID.Win32NT){
+              //return new WinUsbInterop();
+              return new WindowsHidInterop(); //new McUsbInterop();
+              }
+           
+           return null;
+        }
+#endif
+
 
         //=========================================================================================================
         /// <summary>
@@ -96,12 +122,32 @@ namespace MeasurementComputing.DAQFlex
             }
             else if (Environment.OSVersion.Platform == PlatformID.Win32NT)
             {
-                return new WinUsbInterop(deviceInfo, criticalParams);
+                //return new WinUsbInterop(deviceInfo, criticalParams);
+                return new McUsbInterop(deviceInfo, criticalParams);
             }
 
             return null;
 #endif
         }
+        
+#if !WindowsCE
+        internal static HidPlatformInterop GetHidPlatformInterop(DeviceInfo deviceInfo, CriticalParams criticalParams)
+        {
+
+           if (Environment.OSVersion.Platform == PlatformID.Unix)
+           {
+              return null;// new LibUsbInterop(deviceInfo, criticalParams);
+           }
+           else if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+           {
+              //return new WinUsbInterop(deviceInfo, criticalParams);
+              return new WindowsHidInterop(deviceInfo, criticalParams); //new McUsbInterop(deviceInfo, criticalParams);
+           }
+
+           return null;
+
+        }
+#endif
 
         //===================================================================================
         /// <summary>
@@ -127,15 +173,40 @@ namespace MeasurementComputing.DAQFlex
             m_stopWatchResolution = 1.0 / (double)System.Diagnostics.Stopwatch.Frequency;
 		}
 
-        //=================================================================================================
+        //===================================================================================
+        /// <summary>
+        /// Gets the current culture list separator
+        /// </summary>
+        //===================================================================================
+        internal static char LocalListSeparator
+        {
+            get { return m_localListSeparator.ToCharArray()[0]; }
+        }
+
+        //===================================================================================
+        /// <summary>
+        /// Gets the current culture list separator
+        /// </summary>
+        //===================================================================================
+        internal static char LocalNumberDecimalSeparator
+        {
+            get { return m_localNumberDecimalSeparator.ToCharArray()[0]; }
+        }
+
+        //===================================================================================================================
         /// <summary>
         /// Abstract method for getting a list of DeviceInfos
         /// </summary>
         /// <param name="deviceInfoList">The list of devices</param>
         /// <param name="deviceInfoList">A flag indicating if the device list should be refreshed</param>
-        //=================================================================================================
-        internal abstract ErrorCodes GetDevices(Dictionary<int, DeviceInfo> deviceInfoList, bool refresh);
+        //===================================================================================================================
+        internal abstract ErrorCodes GetDevices(Dictionary<int, DeviceInfo> deviceInfoList, DeviceListUsage deviceListUsage);
 
+        //=================================================================================================
+        /// <summary>
+        /// A flag that indicates that all bulk input transfers have completed
+        /// </summary>
+        //=================================================================================================
         protected static object inputTransferCompleteMutex = new object();
 
         internal bool InputTransfersComplete
@@ -157,6 +228,11 @@ namespace MeasurementComputing.DAQFlex
 			}
 		}
 
+        //=================================================================================================
+        /// <summary>
+        /// A flag that indicates that all bulk output transfers have completed
+        /// </summary>
+        //=================================================================================================
         protected static object outputTransferCompleteMutex = new object();
 
         internal bool OutputTransfersComplete
@@ -229,16 +305,73 @@ namespace MeasurementComputing.DAQFlex
             return false;
         }
 
-        //===================================================================================================
+        //=============================================================================================================================================================
         /// <summary>
         /// Virtual method to read a device's memory
         /// </summary>
-        /// <param name="offset">The starting addresss</param>
+        /// <param name="memAddrCmd">The device's memory address command (Request)</param>
+        /// <param name="memReadCmd">The device's memory read command (Request)</param>
+        /// <param name="memoryOffset">The memory offset to read from</param>
+        /// <param name="memoryOffsetLength">The size of the memory offset value (typically 2 bytes)</param>
         /// <param name="count">The number of bytes to read</param>
-        /// <param name="buffer">The buffer containing the memory contents</param>
-        /// <returns>The error code</returns>
-        //===================================================================================================
-        internal virtual ErrorCodes ReadDeviceMemory(ushort offset, byte count, out byte[] buffer)
+        /// <param name="buffer">The buffer to receive the data</param>
+        /// <returns></returns>
+        //=============================================================================================================================================================
+        internal virtual ErrorCodes ReadDeviceMemory1(byte memAddrCmd, byte memReadCmd, ushort memoryOffset, ushort memoryOffsetLength, byte count, out byte[] buffer)
+        {
+            buffer = null;
+            System.Diagnostics.Debug.Assert(false, "ReadDeviceMemory must be implemented in a derived class");
+            return ErrorCodes.MethodRequiresImplementation;
+        }
+
+        //=============================================================================================================================================================
+        /// <summary>
+        /// Virtual method to read a device's memory
+        /// </summary>
+        /// <param name="memReadCmd">The device's memory read command (Request)</param>
+        /// <param name="memoryOffset">The memory offset to read from</param>
+        /// <param name="memoryOffsetLength">The size of the memory offset value (typically 2 bytes)</param>
+        /// <param name="count">The number of bytes to read</param>
+        /// <param name="buffer">The buffer to receive the data</param>
+        /// <returns></returns>
+        //=============================================================================================================================================================
+        internal virtual ErrorCodes ReadDeviceMemory2(byte memReadCmd, ushort memoryOffset, ushort memoryOffsetLength, byte count, out byte[] buffer)
+        {
+            buffer = null;
+            System.Diagnostics.Debug.Assert(false, "ReadDeviceMemory must be implemented in a derived class");
+            return ErrorCodes.MethodRequiresImplementation;
+        }
+
+        //=============================================================================================================================================================
+        /// <summary>
+        /// Virtual method to read a device's memory
+        /// </summary>
+        /// <param name="memReadCmd">The device's memory read command (Request)</param>
+        /// <param name="memoryOffset">The memory offset to read from</param>
+        /// <param name="memoryOffsetLength">The size of the memory offset value (typically 2 bytes)</param>
+        /// <param name="count">The number of bytes to read</param>
+        /// <param name="buffer">The buffer to receive the data</param>
+        /// <returns></returns>
+        //=============================================================================================================================================================
+        internal virtual ErrorCodes ReadDeviceMemory3(byte memReadCmd, ushort memoryOffset, ushort memoryOffsetLength, byte count, out byte[] buffer)
+        {
+            buffer = null;
+            System.Diagnostics.Debug.Assert(false, "ReadDeviceMemory must be implemented in a derived class");
+            return ErrorCodes.MethodRequiresImplementation;
+        }
+
+        //=============================================================================================================================================================
+        /// <summary>
+        /// Virtual method to read a device's memory
+        /// </summary>
+        /// <param name="memReadCmd">The device's memory read command (Request)</param>
+        /// <param name="memoryOffset">The memory offset to read from</param>
+        /// <param name="memoryOffsetLength">The size of the memory offset value (typically 2 bytes)</param>
+        /// <param name="count">The number of bytes to read</param>
+        /// <param name="buffer">The buffer to receive the data</param>
+        /// <returns></returns>
+        //=============================================================================================================================================================
+        internal virtual ErrorCodes ReadDeviceMemory4(byte memReadCmd, ushort memoryOffset, ushort memoryOffsetLength, byte count, out byte[] buffer)
         {
             buffer = null;
             System.Diagnostics.Debug.Assert(false, "ReadDeviceMemory must be implemented in a derived class");
@@ -288,19 +421,91 @@ namespace MeasurementComputing.DAQFlex
             return ErrorCodes.MethodRequiresImplementation;
         }
 
-        //===================================================================================================
+        //==============================================================================================================================================================================
         /// <summary>
         /// Virtual method to Write data to a device's memory
         /// </summary>
-        /// <param name="memoryOffset">The starting addresss of the device's memory</param>
-        /// <param name="bufferOffset">The starting addresss of the data buffer</param>
-        /// <param name="buffer">The data buffer</param>
+        /// <param name="memAddrCmd">The device's memory address command</param>
+        /// <param name="memWriteCmd">The device's memory write command</param>
+        /// <param name="memoryOffset">The memory offset to start writing to</param>
+        /// <param name="memOffsetLength">The size of the memoryOffset value (typically 2 bytes)</param>
+        /// <param name="bufferOffset">The buffer offset</param>
+        /// <param name="buffer">The buffer containg the data to write to memory</param>
         /// <param name="count">The number of bytes to write</param>
-        /// <returns>The error code</returns>
-        //===================================================================================================
-        internal virtual ErrorCodes WriteDeviceMemory(ushort memoryOffset, ushort bufferOffset, byte[] buffer, byte count)
+        /// <returns></returns>
+        //==============================================================================================================================================================================
+        internal virtual ErrorCodes WriteDeviceMemory1(byte memAddrCmd, byte memWriteCmd, ushort memoryOffset, ushort memOffsetLength, ushort bufferOffset, byte[] buffer, byte count)
         {
             System.Diagnostics.Debug.Assert(false, "WriteDeviceMemory must be implemented in a derived class");
+            return ErrorCodes.MethodRequiresImplementation;
+        }
+
+        //==============================================================================================================================================================================
+        /// <summary>
+        /// Virtual method to Write data to a device's memory
+        /// </summary>
+        /// <param name="memWriteCmd">The device's memory write command</param>
+        /// <param name="memoryOffset">The memory offset to start writing to</param>
+        /// <param name="memOffsetLength">The size of the memoryOffset value (typically 2 bytes)</param>
+        /// <param name="bufferOffset">The buffer offset</param>
+        /// <param name="buffer">The buffer containg the data to write to memory</param>
+        /// <param name="count">The number of bytes to write</param>
+        /// <returns></returns>
+        //==============================================================================================================================================================================
+        internal virtual ErrorCodes WriteDeviceMemory2(byte memWriteCmd, ushort memoryOffset, ushort memOffsetLength, ushort bufferOffset, byte[] buffer, byte count)
+        {
+            System.Diagnostics.Debug.Assert(false, "WriteDeviceMemory must be implemented in a derived class");
+            return ErrorCodes.MethodRequiresImplementation;
+        }
+
+        //==============================================================================================================================================================================
+        /// <summary>
+        /// Virtual method to Write data to a device's memory
+        /// </summary>
+        /// <param name="unlockKey">The unlock key</param>
+        /// <param name="memCmd">The device's memory write command</param>
+        /// <param name="memoryOffset">The memory offset to start writing to</param>
+        /// <param name="memOffsetLength">The size of the memoryOffset value (typically 2 bytes)</param>
+        /// <param name="bufferOffset">The buffer offset</param>
+        /// <param name="buffer">The buffer containg the data to write to memory</param>
+        /// <param name="count">The number of bytes to write</param>
+        /// <returns></returns>
+        //==============================================================================================================================================================================
+        internal virtual ErrorCodes WriteDeviceMemory3(ushort unlockKey, byte memCmd, ushort memoryOffset, ushort memOffsetLength, ushort bufferOffset, byte[] buffer, byte count)
+        {
+            System.Diagnostics.Debug.Assert(false, "WriteDeviceMemory must be implemented in a derived class");
+            return ErrorCodes.MethodRequiresImplementation;
+        }
+
+        //==============================================================================================================================================================================
+        /// <summary>
+        /// Virtual method to Write data to a device's memory
+        /// </summary>
+        /// <param name="unlockKey">The unlock key</param>
+        /// <param name="memCmd">The device's memory write command</param>
+        /// <param name="memoryOffset">The memory offset to start writing to</param>
+        /// <param name="memOffsetLength">The size of the memoryOffset value (typically 2 bytes)</param>
+        /// <param name="bufferOffset">The buffer offset</param>
+        /// <param name="buffer">The buffer containg the data to write to memory</param>
+        /// <param name="count">The number of bytes to write</param>
+        /// <returns></returns>
+        //==============================================================================================================================================================================
+        internal virtual ErrorCodes WriteDeviceMemory4(ushort unlockKey, byte memCmd, ushort memoryOffset, ushort memOffsetLength, ushort bufferOffset, byte[] buffer, byte count)
+        {
+            System.Diagnostics.Debug.Assert(false, "WriteDeviceMemory must be implemented in a derived class");
+            return ErrorCodes.MethodRequiresImplementation;
+        }
+
+        //===================================================================================================
+        /// <summary>
+        /// Virtual method to load data into the device's FPGA
+        /// </summary>
+        /// <param name="buffer">The data to load</param>
+        /// <returns>The error code</returns>
+        //===================================================================================================
+        internal virtual ErrorCodes LoadFPGA(byte request, byte[] buffer)
+        {
+            System.Diagnostics.Debug.Assert(false, "LoadFPGA must be implemented in a derived class");
             return ErrorCodes.MethodRequiresImplementation;
         }
 
@@ -312,6 +517,18 @@ namespace MeasurementComputing.DAQFlex
         internal byte[] DriverInterfaceOutputBuffer
         {
             set { m_driverInterfaceOutputBuffer = value; }
+        }
+
+        //==============================================================================================
+        /// <summary>
+        /// Virtual method to check if a device has reported a data overrun
+        /// </summary>
+        /// <returns>The result</returns>
+        //==============================================================================================
+        internal virtual bool CheckDeviceResponding()
+        {
+            System.Diagnostics.Debug.Assert(false, "CheckDeviceResponding must be implemented in a derived class");
+            return false;
         }
 
         //==============================================================================================
@@ -405,34 +622,26 @@ namespace MeasurementComputing.DAQFlex
             get { return m_errorCode; }
         }
 
-        //======================================================================================
+        //===========================================================================================
         /// <summary>
-        /// Gets the device name based on the product ID
+        /// This property will get set within methods that do not return error codes
+        /// but need to check errors
         /// </summary>
-        /// <param name="pid">The product ID</param>
-        /// <returns>Name of the device</returns>
-        //======================================================================================
-        protected string GetDeviceName(int pid)
+        //===========================================================================================
+        internal ErrorCodes InputScanErrorCode
         {
-            string deviceName = String.Empty;
+            get { return m_inputScanErrorCode; }
+        }
 
-            switch (pid)
-            {
-                case (0xF2):
-                    deviceName = "USB-7202";
-                    break;
-                case (0xF0):
-                    deviceName = "USB-7204";
-                    break;
-                case (0xF9):
-                    deviceName = "USB-2001-TC";
-                    break;
-                default:
-                    deviceName = "Unknown Device";
-                    break;
-            }
-
-            return deviceName;
+        //===========================================================================================
+        /// <summary>
+        /// This property will get set within methods that do not return error codes
+        /// but need to check errors
+        /// </summary>
+        //===========================================================================================
+        internal ErrorCodes OutputScanErrorCode
+        {
+            get { return m_outputScanErrorCode; }
         }
 
         internal int MaxTransferSize
@@ -459,8 +668,38 @@ namespace MeasurementComputing.DAQFlex
         internal virtual void ReleaseDevice()
         {
         }
-		
-		//==================================================================
+
+        //==================================================================
+        /// <summary>
+        /// Clears the error code - typically used for staring scans
+        /// </summary>
+        //==================================================================
+        internal void ClearError()
+        {
+            m_errorCode = ErrorCodes.NoErrors;
+        }
+
+        //==================================================================
+        /// <summary>
+        /// Clears the error code - typically used for staring scans
+        /// </summary>
+        //==================================================================
+        internal void ClearInputScanError()
+        {
+            m_inputScanErrorCode = ErrorCodes.NoErrors;
+        }
+
+        //==================================================================
+        /// <summary>
+        /// Clears the error code - typically used for staring scans
+        /// </summary>
+        //==================================================================
+        internal void ClearOutputScanError()
+        {
+            m_outputScanErrorCode = ErrorCodes.NoErrors;
+        }
+        
+        //==================================================================
 		/// <summary>
 		/// Virtual method to clear the pipe's stall state 
 		/// </summary>

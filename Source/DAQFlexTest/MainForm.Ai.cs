@@ -24,10 +24,20 @@ namespace MeasurementComputing.DAQFlex.Test
                 aiMessageComboBox.Enabled = true;
                 aiSendMessageButton.Enabled = true;
 
+                commands.Sort();
+
                 foreach (string command in commands)
                     aiMessageComboBox.Items.Add(command);
 
                 aiMessageComboBox.SelectedIndex = 0;
+
+                // check if the device support self calibration
+                string response = m_daqDevice.SendMessage("@AI:SELFCAL").ToString();
+
+                if (response.Contains("NOT_SUPPORTED"))
+                    aiCalibrateButton.Enabled = false;
+                else
+                    aiCalibrateButton.Enabled = true;
             }
             else
             {
@@ -58,11 +68,14 @@ namespace MeasurementComputing.DAQFlex.Test
                 // send the message to the device
                 response = m_daqDevice.SendMessage(message);
 
-                // the DaqResponse has a method to get the value as a string and a method to get the value as a numeric
-                if (aiTextRadioButton.Checked)
-                    aiResponseTextBox.Text = response.ToString();
+                aiResponseTextBox.Text = response.ToString();
+
+                double numericResponse = response.ToValue();
+
+                if (!Double.IsNaN(numericResponse))
+                    aiNumericResponseTextBox.Text = numericResponse.ToString();
                 else
-                    aiResponseTextBox.Text = response.ToValue().ToString("F04");
+                    aiNumericResponseTextBox.Text = String.Empty;
 
                 statusLabel.Text = "Success";
             }
@@ -74,10 +87,14 @@ namespace MeasurementComputing.DAQFlex.Test
 
                 if (ex.LastResponse != null)
                 {
-                    if (aiTextRadioButton.Checked)
-                        aiResponseTextBox.Text = ex.LastResponse.ToString();
+                    aiResponseTextBox.Text = ex.LastResponse.ToString();
+
+                    double numericResponse = ex.LastResponse.ToValue();
+
+                    if (!Double.IsNaN(numericResponse))
+                        aiNumericResponseTextBox.Text = numericResponse.ToString();
                     else
-                        aiResponseTextBox.Text = ex.LastResponse.ToValue().ToString("F04");
+                        aiNumericResponseTextBox.Text = String.Empty;
                 }
                 else
                 {
@@ -88,26 +105,15 @@ namespace MeasurementComputing.DAQFlex.Test
             }
         }
 
-        //==============================================================================
-        /// <summary>
-        /// This enables the radio buttons when the message is for querying the Value property
-        /// This allows the value property to be returned as text or as a numeric
-        /// </summary>
-        /// <param name="sender">The control that raised the event</param>
-        /// <param name="e">The event args</param>
-        //==============================================================================
-        private void OnAiMessageChanged(object sender, EventArgs e)
+        private void OnAiCalibrate(object sender, EventArgs e)
         {
-            if (aiMessageComboBox.Text.Contains("?") && aiMessageComboBox.Text.Contains("VALUE"))
+            using (CalibrateAiForm caf = new CalibrateAiForm(m_daqDevice))
             {
-                aiTextRadioButton.Enabled = true;
-                aiNumericRadioButton.Enabled = true;
-            }
-            else
-            {
-                aiTextRadioButton.Checked = true;
-                aiTextRadioButton.Enabled = false;
-                aiNumericRadioButton.Enabled = false;
+#if WindowsCE
+                caf.ShowDialog();
+#else
+                caf.ShowDialog(this);
+#endif
             }
         }
     }

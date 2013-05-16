@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using System.Drawing;
+using System.Windows.Forms;
 using MeasurementComputing.DAQFlex;
 
 namespace DIn
@@ -25,32 +26,10 @@ namespace DIn
                         deviceComboBox.Items.Add(name);
 
                     deviceComboBox.SelectedIndex = 0;
-
-                    // Get number of supported channels
-                    DaqResponse response = Device.SendMessage("@DIO:CHANNELS");
-
-                    if (!response.ToString().Contains("NOT_SUPPRORTED"))
-                    {
-                        int channels = (int)response.ToValue();
-
-                        for (int i = 0; i < channels; i++)
-                            portComboBox.Items.Add(i.ToString());
-
-                        portComboBox.SelectedIndex = 0;
-
-                        // Initialize the timer
-                        timer1.Interval = 500;
-                        timer1.Enabled = false;
-                    }
-                    else
-                    {
-                        DisableControls();
-                        statusLabel.Text = "The selected device does not support digital input!";
-                    }
                 }
                 else
                 {
-                    DisableControls();
+                    EnableControls(false);
                     statusLabel.Text = "No devices detected!";
                 }
             }
@@ -60,6 +39,37 @@ namespace DIn
             }
 
             base.OnLoad(e);
+        }
+
+        private void InitializeControls()
+        {
+            // Get number of supported channels
+            DaqResponse response = Device.SendMessage("@DIO:CHANNELS");
+
+            if (!response.ToString().Contains("NOT_SUPPORTED"))
+            {
+                EnableControls(true);
+
+                int channels = (int)response.ToValue();
+
+                portComboBox.Items.Clear();
+
+                for (int i = 0; i < channels; i++)
+                    portComboBox.Items.Add(i.ToString());
+
+                portComboBox.SelectedIndex = 0;
+
+                // Initialize the timer
+                timer1.Interval = 500;
+                timer1.Enabled = false;
+
+                statusLabel.Text = String.Empty;
+            }
+            else
+            {
+                EnableControls(false);
+                statusLabel.Text = "The selected device does not support digital input!";
+            }
         }
 
         private void OnDeviceChanged(object sender, EventArgs e)
@@ -73,7 +83,12 @@ namespace DIn
                 string name = deviceComboBox.SelectedItem.ToString();
 
                 // Create a new device object
+                Cursor.Current = Cursors.WaitCursor;
                 Device = DaqDeviceManager.CreateDevice(name);
+
+                InitializeControls();
+
+                Cursor.Current = Cursors.Default;
             }
             catch (Exception ex)
             {
@@ -246,13 +261,13 @@ namespace DIn
             }
         }
 
-        private void DisableControls()
+        private void EnableControls(bool enableState)
         {
-            portComboBox.Enabled = false;
-            portRadioButton.Enabled = false;
-            bitRadioButton.Enabled = false;
-            startButton.Enabled = false;
-            stopButton.Enabled = false;
+            portComboBox.Enabled = enableState;
+            portRadioButton.Enabled = enableState;
+            bitRadioButton.Enabled = enableState;
+            startButton.Enabled = enableState;
+            stopButton.Enabled = enableState;
         }
     }
 }

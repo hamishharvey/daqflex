@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Reflection;
 using System.Globalization;
+using System.Threading;
 
 namespace MeasurementComputing.DAQFlex
 {
@@ -36,14 +37,25 @@ namespace MeasurementComputing.DAQFlex
         //======================================================================
         public DaqResponse SendMessage(string message)
         {
-            m_deviceMutex.WaitOne();
+            Monitor.Enter(m_deviceLock);
+
+            m_messagePending = true;
 
             DaqException dex;
+
+            if (m_deviceReleased)
+            {
+                dex = ResolveException(ErrorCodes.DeviceHasBeenReleased);
+                m_messagePending = false;
+                Monitor.Exit(m_deviceLock);
+                throw dex;
+            }
 
             if (message == null || message == String.Empty)
             {
                 dex = ResolveException(ErrorCodes.MessageIsEmpty);
-                m_deviceMutex.ReleaseMutex();
+                m_messagePending = false;
+                Monitor.Exit(m_deviceLock);
                 throw dex;
             }
 
@@ -56,6 +68,7 @@ namespace MeasurementComputing.DAQFlex
 
             if (!message.Contains(Constants.QUERY.ToString()) && message.Contains(DaqComponents.DEV) && message.Contains(DaqProperties.ID))
             {
+                // when the device ID is being set ("DEV:ID=myID"), don't convert the value of the ID
                 string id = MessageTranslator.GetPropertyValue(message);
                 msg = message.Remove(message.IndexOf(Constants.EQUAL_SIGN) + 1, 
                                      message.Length - message.IndexOf(Constants.EQUAL_SIGN) - 1);
@@ -67,15 +80,49 @@ namespace MeasurementComputing.DAQFlex
                 msg = message.ToUpper();
             }
 
+            // remove leading and trailing white spaces
+            msg = msg.Trim();
+
+            //if (this is VirtualDevice && msg[0] == Constants.REFLECTOR_SYMBOL)
+            //{
+            //    return ((VirtualDevice)this).SendVirtualMessage(msg);
+            //}
+
             //********************************************************
             // Check for a Device Reflection Message
             //********************************************************
-            if (msg[0] == '@')
+            if (msg[0] == Constants.REFLECTOR_SYMBOL)
             {
                 // '@' denotes a Device Reflection message - let the reflector handle it then return
-                DaqResponse featureResponse = GetDeviceCapability(msg); ;
-                m_deviceMutex.ReleaseMutex();
+                DaqResponse featureResponse = GetDeviceCapability(msg);
+                m_messagePending = false;
+                Monitor.Exit(m_deviceLock);
                 return featureResponse;
+            }
+
+            //********************************************************
+            // Messages with a '>' are sent directly to the device
+            //********************************************************
+            if (msg[0] == Constants.DIRECT_ROUTING_SYMBOL)
+            {
+                msg = msg.Substring(1);
+                ErrorCodes directErrorCode = ErrorCodes.NoErrors;
+                directErrorCode = SendMessageDirect(msg);
+
+                if (directErrorCode != ErrorCodes.NoErrors)
+                {
+                    dex = ResolveException(directErrorCode);
+                    m_messagePending = false;
+                    Monitor.Exit(m_deviceLock);
+                    throw dex;
+                }
+
+                string directResponse = m_driverInterface.ReadStringDirect();
+                double directValue = m_driverInterface.ReadValueDirect();
+
+                Monitor.Exit(m_deviceLock);
+
+                return new DaqResponse(directResponse, directValue);
             }
 
             //********************************************************
@@ -86,7 +133,8 @@ namespace MeasurementComputing.DAQFlex
             if (componentType == String.Empty)
             {
                 dex = ResolveException(ErrorCodes.InvalidComponentSpecified);
-                m_deviceMutex.ReleaseMutex();
+                m_messagePending = false; 
+                Monitor.Exit(m_deviceLock);
                 throw dex;
             }
 
@@ -102,6 +150,8 @@ namespace MeasurementComputing.DAQFlex
                 else
                     dex = ResolveException(m_apiMessageError);
 
+                m_messagePending = false;
+                Monitor.Exit(m_deviceLock);
                 throw dex;
             }
 
@@ -110,7 +160,8 @@ namespace MeasurementComputing.DAQFlex
             //********************************************************
             if (!SendMessageToDevice)
             {
-                m_deviceMutex.ReleaseMutex();
+                m_messagePending = false;
+                Monitor.Exit(m_deviceLock);
 
                 return m_apiResponse;
             }
@@ -128,15 +179,21 @@ namespace MeasurementComputing.DAQFlex
                 if (result != ErrorCodes.NoErrors)
                 {
                     dex = ResolveException(result);
+
+                    m_messagePending = false;
+                    Monitor.Exit(m_deviceLock);
                     throw dex;
                 }
             }
 
+            //********************************************************************************
+            // Queue the device message in case the device configuration needs to be restored
+            //********************************************************************************
+            QueueDeviceMessage(msg);
+
             //********************************************************
             // Transfer the message to the driver interface
             //********************************************************
-
-            ResponseType responseType = GetResponseType(msg);
 
             byte[] messageBytes = new byte[Constants.MAX_COMMAND_LENGTH];
 
@@ -145,11 +202,11 @@ namespace MeasurementComputing.DAQFlex
                 messageBytes[i] = (byte)msg[i];
 
             // let the driver interface transfer the message to the device
-            result = m_driverInterface.TransferMessage(messageBytes, responseType);
+            result = m_driverInterface.TransferMessage(messageBytes);
 
             // retry once on device not responding
             if (result == ErrorCodes.DeviceNotResponding)
-                result = m_driverInterface.TransferMessage(messageBytes, responseType);
+                result = m_driverInterface.TransferMessage(messageBytes);
 
             // if there was an error throw an exception
             // the application needs to catch this
@@ -157,13 +214,14 @@ namespace MeasurementComputing.DAQFlex
             {
                 if (result == ErrorCodes.InvalidMessage)
                 {
-                    ErrorCodes ec = m_driverInterface.TransferMessage(m_devIdMessage, ResponseType.Simple);
+                    ErrorCodes ec = m_driverInterface.TransferMessage(m_devIdMessage);
                     if (ec != ErrorCodes.NoErrors)
                         result = ErrorCodes.DeviceNotResponding;
                 }
 
                 dex = ResolveException(msg, result);
-                m_deviceMutex.ReleaseMutex(); 
+                m_messagePending = false;
+                Monitor.Exit(m_deviceLock);
                 throw dex;
             }
 
@@ -182,30 +240,40 @@ namespace MeasurementComputing.DAQFlex
             // Post process any data sent back in the response
             //********************************************************
 
-            if (message.Contains("?") && message.Contains("VALUE"))
+            if (message.Contains(Constants.QUERY.ToString()))
             {
                 // PostProcessData is allowed to modify the response
                 result = PostProcessData(componentType, ref responseText, ref value);
 
-                // process the response before throwing on error or warning
+                // process the response before throwing an error or warning
                 responseText = AmendResponse(responseText);
 
-                // recreate the response in case responseText  and value were modified
+                // recreate the response in case responseText and value were modified
                 response = new DaqResponse(responseText, value);
 
                 if (result != ErrorCodes.NoErrors)
                 {
                     dex = ResolveException(result, response);
+                    m_messagePending = false;
+                    Monitor.Exit(m_deviceLock);
                     throw dex;
                 }
             }
 
+            //********************************************************
+            // Post process the message
+            //********************************************************
+            PostProcessMessage(ref message, componentType);
+
             if (m_updateRanges)
                 UpdateIoCompRanges();
-                
-            m_deviceMutex.ReleaseMutex();
+
+            m_messagePending = false;
+            Monitor.Exit(m_deviceLock);
 
             System.Diagnostics.Debug.Assert(response != null);
+
+            RestoreApiFlags(componentType);
 
             return response;
         }
@@ -220,7 +288,7 @@ namespace MeasurementComputing.DAQFlex
         //================================================================================================================
         public void EnableCallback(InputScanCallbackDelegate callback, CallbackType callbackType, object callbackData)
         {
-            m_deviceMutex.WaitOne();
+            Monitor.Enter(m_deviceLock);
 
             if (callbackType == CallbackType.OnDataAvailable)
             {
@@ -253,7 +321,7 @@ namespace MeasurementComputing.DAQFlex
                 m_driverInterface.OnInputScanErrorCallbackControl = new CallbackControl(this, callback, callbackType, callbackData);
             }
 
-            m_deviceMutex.ReleaseMutex();
+            Monitor.Exit(m_deviceLock);
         }
 
         //===================================================================================================
@@ -264,7 +332,7 @@ namespace MeasurementComputing.DAQFlex
         //===================================================================================================
         public void DisableCallback(CallbackType callbackType)
         {
-            m_deviceMutex.WaitOne();
+            Monitor.Enter(m_deviceLock);
 
             if (callbackType == CallbackType.OnDataAvailable)
                 m_driverInterface.OnDataAvailableCallbackControl = null;
@@ -273,8 +341,7 @@ namespace MeasurementComputing.DAQFlex
             else if (callbackType == CallbackType.OnInputScanError)
                 m_driverInterface.OnInputScanErrorCallbackControl = null;
 
-            m_deviceMutex.ReleaseMutex();
-            
+            Monitor.Exit(m_deviceLock);
         }
 
         //===================================================================================================
@@ -302,12 +369,22 @@ namespace MeasurementComputing.DAQFlex
         //===================================================================================================
         public double[,] ReadScanData(int samplesRequested, int timeOut)
         {
-            m_deviceMutex.WaitOne();
+            Monitor.Enter(m_readDataLock);
+
+            DebugLogger.WriteLine("Reading {0} samples - thread {1}", samplesRequested, Thread.CurrentThread.ManagedThreadId);
+
+            if (PendingInputScanError != ErrorCodes.NoErrors)
+            {
+                Exception e = ResolveException(PendingInputScanError);
+                PendingInputScanError = ErrorCodes.NoErrors;
+                Monitor.Exit(m_readDataLock);
+                throw e;
+            }
 
             if (samplesRequested == 0)
             {
                 Exception e = ResolveException(ErrorCodes.InputScanReadCountIsZero);
-                m_deviceMutex.ReleaseMutex();
+                Monitor.Exit(m_readDataLock);
                 throw e;
             }
 
@@ -316,7 +393,7 @@ namespace MeasurementComputing.DAQFlex
             double[,] userScanData = null;
 
             int channelCount = m_driverInterface.CriticalParams.AiChannelCount;
-            int byteRatio = (int)Math.Ceiling((double)m_driverInterface.CriticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
+            int byteRatio = m_driverInterface.CriticalParams.DataInXferSize;
             int bytesRequested = samplesRequested * byteRatio * channelCount;
 
             if (bytesRequested > m_driverInterface.InputScanBuffer.Length)
@@ -332,12 +409,16 @@ namespace MeasurementComputing.DAQFlex
                 // first check the driver interface error code 
                 if (errorCode == ErrorCodes.NoErrors)
                 {
-                    if (m_driverInterface.CriticalParams.InputSampleMode == SampleMode.Finite)
+                    if (!m_driverInterface.CriticalParams.TriggerRearmEnabled &&
+                            m_driverInterface.CriticalParams.InputSampleMode == SampleMode.Finite)
                     {
                         if (samplesRequested > m_driverInterface.CriticalParams.InputScanSamples)
                             errorCode = ErrorCodes.TooManySamplesRequested;
-                        if (m_driverInterface.CriticalParams.InputScanSamples == m_driverInterface.InputSamplesReadPerChannel)
+
+                        if ((ulong)m_driverInterface.CriticalParams.InputScanSamples == m_driverInterface.InputSamplesReadPerChannel)
+                        {
                             errorCode = ErrorCodes.NoMoreInputSamplesAvailable;
+                        }
                     }
 
                     if (errorCode == ErrorCodes.NoErrors)
@@ -373,9 +454,10 @@ namespace MeasurementComputing.DAQFlex
                             errorCode = m_driverInterface.ErrorCode;
                         }
 
-                        if (m_driverInterface.CriticalParams.InputSampleMode == SampleMode.Finite)
+                        if (!m_driverInterface.CriticalParams.TriggerRearmEnabled &&
+                                m_driverInterface.CriticalParams.InputSampleMode == SampleMode.Finite)
                         {
-                            if (m_driverInterface.CriticalParams.InputScanSamples == m_driverInterface.InputScanCount)
+                            if ((ulong)m_driverInterface.CriticalParams.InputScanSamples == m_driverInterface.InputScanCount)
                             {
                                 m_driverInterface.WaitForIdle();
                             }
@@ -389,11 +471,11 @@ namespace MeasurementComputing.DAQFlex
             if (errorCode != ErrorCodes.NoErrors)
             {
                 Exception e = ResolveException(errorCode);
-                m_deviceMutex.ReleaseMutex();
+                Monitor.Exit(m_readDataLock);
                 throw e;
             }
 
-            m_deviceMutex.ReleaseMutex();
+            Monitor.Exit(m_readDataLock);
 
             return userScanData;
         }
@@ -407,19 +489,28 @@ namespace MeasurementComputing.DAQFlex
         //=========================================================================================================
         public void WriteScanData(double[,] scanData, int numberOfSamplesPerChannel, int timeOut)
         {
-            m_deviceMutex.WaitOne();
+            Monitor.Enter(m_writeDataLock);
+
+            string status = SendMessage(Messages.AOSCAN_STATUS_QUERY).ToString();
+
+            if (PendingOutputScanError != ErrorCodes.NoErrors)
+            {
+                Exception e = ResolveException(PendingOutputScanError);
+                PendingOutputScanError = ErrorCodes.NoErrors;
+                throw e;
+            }
 
             if (numberOfSamplesPerChannel > scanData.GetLength(1))
             {
                 Exception e = ResolveException(ErrorCodes.NumberOfSamplesPerChannelGreaterThanUserBufferSize);
-                m_deviceMutex.ReleaseMutex();
+                Monitor.Exit(m_writeDataLock);
                 throw e;
             }
 
             ErrorCodes errorCode = ErrorCodes.NoErrors;
 
             int channelCount = scanData.GetLength(0);
-            int byteRatio = (int)Math.Ceiling((double)m_driverInterface.CriticalParams.AoDataWidth / (double)Constants.BITS_PER_BYTE);
+            int byteRatio = m_driverInterface.CriticalParams.DataOutXferSize;
             int bytesRequested = numberOfSamplesPerChannel * byteRatio * channelCount;
 
             if (bytesRequested > m_driverInterface.OutputScanBuffer.Length)
@@ -446,8 +537,16 @@ namespace MeasurementComputing.DAQFlex
                         // get the driver interface's output scan buffer
                         byte[] internalWriteBuffer = m_driverInterface.OutputScanBuffer;
 
-                        // copy the data to the driver interface's output scan buffer and update the write index
-                        Ao.CopyScanData(scanData, internalWriteBuffer, ref writeIndex, numberOfSamplesPerChannel, timeOut);
+                        if (status.Contains(PropertyValues.IDLE))
+                        {
+                            // copy the data to the pre-start buffer
+                            Ao.CopyScanDataToPreStartBuffer(scanData, numberOfSamplesPerChannel);
+                        }
+                        else
+                        {
+                            // copy the data to the driver interface's output scan buffer and update the write index
+                            Ao.CopyScanData(scanData, internalWriteBuffer, ref writeIndex, numberOfSamplesPerChannel, timeOut);
+                        }
 
                         // set the driver interface's current write index
                         m_driverInterface.CurrentOutputScanWriteIndex = writeIndex;
@@ -462,11 +561,11 @@ namespace MeasurementComputing.DAQFlex
             if (errorCode != ErrorCodes.NoErrors)
             {
                 Exception e = ResolveException(errorCode);
-                m_deviceMutex.ReleaseMutex();
+                Monitor.Exit(m_writeDataLock);
                 throw e;
             }
 
-            m_deviceMutex.ReleaseMutex();
+            Monitor.Exit(m_writeDataLock);
         }
 
         //===========================================================================
@@ -497,6 +596,10 @@ namespace MeasurementComputing.DAQFlex
                     if (Ai != null)
                         messageList = Ai.GetMessages(daqComponent);
                     break;
+                case (DaqComponents.AIQUEUE):
+                    if (Ai != null)
+                        messageList = Ai.GetMessages(daqComponent);
+                    break;
                 case (DaqComponents.AO):
                     if (Ao != null)
                         messageList = Ao.GetMessages(daqComponent);
@@ -512,6 +615,10 @@ namespace MeasurementComputing.DAQFlex
                 case (DaqComponents.CTR):
                     if (Ctr != null)
                         messageList = Ctr.GetMessages(daqComponent);
+                    break;
+                case (DaqComponents.TMR):
+                    if (Tmr != null)
+                        messageList = Tmr.GetMessages(daqComponent);
                     break;
                 default:
                     messageList = new List<string>();
@@ -530,7 +637,7 @@ namespace MeasurementComputing.DAQFlex
         //===================================================================================================
         public string GetErrorMessage(ErrorCodes errorCode)
         {
-            m_deviceMutex.WaitOne();
+            Monitor.Enter(m_deviceLock);
 
             Type type = typeof(ErrorMessages);
             PropertyInfo pi = type.GetProperty(errorCode.ToString(), BindingFlags.Static | BindingFlags.Public);
@@ -547,7 +654,7 @@ namespace MeasurementComputing.DAQFlex
                 message = String.Format("No text associated with error code {0}", errorCode);
             }
 
-            m_deviceMutex.ReleaseMutex();
+            Monitor.Exit(m_deviceLock);
 
             return message;
         }

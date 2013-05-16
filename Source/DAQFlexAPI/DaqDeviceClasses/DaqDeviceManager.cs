@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Text;
 
 namespace MeasurementComputing.DAQFlex
@@ -28,6 +29,8 @@ namespace MeasurementComputing.DAQFlex
     //============================================================================================
     public partial class DaqDeviceManager
     {
+        private const string m_defaultCultureName = "en-US";
+
         private static Dictionary<int, DeviceInfo> m_deviceInfoList = new Dictionary<int, DeviceInfo>();
         private static List<string> m_deviceNames = new List<string>();
         private static List<DaqDevice> m_daqDeviceList = new List<DaqDevice>();
@@ -42,7 +45,7 @@ namespace MeasurementComputing.DAQFlex
         //========================================================================================================
         public static string[] GetDeviceNames(DeviceNameFormat format)
         {
-            return GetDeviceNames(format, false);
+            return GetDeviceNames(format, DeviceListUsage.ReuseList);
         }
 
         //========================================================================================================
@@ -53,9 +56,13 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="format">A flag indicating if the current list should be used or recreated</param>
         /// <returns>The list of device names</returns>
         //========================================================================================================
-        public static string[] GetDeviceNames(DeviceNameFormat format, bool refresh)
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public static string[] GetDeviceNames(DeviceNameFormat format, DeviceListUsage deviceListUsage)
         {
             m_nameFormat = format;
+
+            if (deviceListUsage == DeviceListUsage.UpdateList)
+                return GetUnusedDeviceNames(format);
 
             if (m_daqDeviceList.Count > 0)
                 throw new DaqException(ErrorMessages.DaqDeviceListNotEmpty, ErrorCodes.DaqDeviceListNotEmpty);
@@ -64,10 +71,17 @@ namespace MeasurementComputing.DAQFlex
 
             if (platformInterop != null)
             {
-                if (m_deviceInfoList.Count == 0 || m_deviceNames.Count == 0 || refresh == true)
+                if (m_deviceInfoList.Count == 0 || 
+                        m_deviceNames.Count == 0 || 
+                            deviceListUsage == DeviceListUsage.RefreshList ||
+                                deviceListUsage == DeviceListUsage.UpdateList)
                 {
-                    ErrorCodes er = platformInterop.GetDevices(m_deviceInfoList, refresh);
+                    /* get a list of detected devices */
+                    ErrorCodes er = platformInterop.GetDevices(m_deviceInfoList, deviceListUsage);
     				
+                    /* create a DeviceInfo object for the virtual device */
+                    //AddVirtualDeviceInfo();
+
 				    if (er == ErrorCodes.LibusbCouldNotBeInitialized)
                         throw new DaqException(ErrorMessages.LibusbCouldNotBeInitialized, er);
     				
@@ -79,6 +93,8 @@ namespace MeasurementComputing.DAQFlex
                 }
 
                 m_deviceNames.Clear();
+                
+            
 
 				foreach (KeyValuePair<int, DeviceInfo> kvp in m_deviceInfoList)
                 {
@@ -120,6 +136,103 @@ namespace MeasurementComputing.DAQFlex
 
 
             return m_deviceNames.ToArray();
+        }
+
+        //================================================================================================================
+        /// <summary>
+        /// creates a list of device names for devices that weren't detected from a previous call to GetUnusedDeviceNames
+        /// </summary>
+        /// <param name="format">The format to return device names in</param>
+        /// <param name="format">A flag indicating if the current list should be used or recreated</param>
+        /// <returns>The list of device names</returns>
+        //================================================================================================================
+        protected static string[] GetUnusedDeviceNames(DeviceNameFormat format)
+        {
+            List<string> unusedDeviceNames = new List<string>();
+
+            m_nameFormat = format;
+
+            PlatformInterop platformInterop = PlatformInterop.GetUsbPlatformInterop();
+
+            if (platformInterop != null)
+            {
+                /* get a list of detected devices */
+                ErrorCodes er = platformInterop.GetDevices(m_deviceInfoList, DeviceListUsage.UpdateList);
+
+                /* create a DeviceInfo object for the virtual device */
+                //AddVirtualDeviceInfo();
+
+                if (er == ErrorCodes.LibusbCouldNotBeInitialized)
+                    throw new DaqException(ErrorMessages.LibusbCouldNotBeInitialized, er);
+
+                if (er == ErrorCodes.LibusbCouldNotBeLoaded)
+                    throw new DaqException(ErrorMessages.LibusbCouldNotBeLoaded, er);
+
+                if (er == ErrorCodes.LibUsbGetDeviceDescriptorFailed)
+                    throw new DaqException(ErrorMessages.LibUsbGetDeviceDescriptorFailed, er);
+
+                m_deviceNames.Clear();
+
+                foreach (KeyValuePair<int, DeviceInfo> kvp in m_deviceInfoList)
+                {
+                    string name = String.Empty;
+                    DeviceInfo di = kvp.Value;
+
+                    /* get the device ID */
+                    di.DeviceID = platformInterop.GetDeviceID(kvp.Value);
+
+                    /* get the serial number */
+                    if (Environment.OSVersion.Platform != PlatformID.Win32NT)
+                        di.SerialNumber = platformInterop.GetSerno(kvp.Value);
+
+                    if (m_nameFormat == DeviceNameFormat.NameOnly)
+                    {
+                        name = di.DisplayName;
+                    }
+                    else if (m_nameFormat == DeviceNameFormat.NameAndSerno)
+                    {
+                        name = String.Format("{0}{1}{2}", di.DisplayName, Constants.DEVICE_NAME_SEPARATOR, di.SerialNumber);
+                    }
+                    else if (m_nameFormat == DeviceNameFormat.NameAndID)
+                    {
+                        if (di.DeviceID != String.Empty)
+                        {
+                            name = String.Format("{0}{1}{2}", di.DisplayName, Constants.DEVICE_NAME_SEPARATOR, di.DeviceID);
+                        }
+                    }
+                    else if (m_nameFormat == DeviceNameFormat.NameSernoAndID)
+                    {
+                        if (di.DeviceID != String.Empty)
+                        {
+                            name = String.Format("{0}{1}{2}{3}{4}", di.DisplayName, Constants.DEVICE_NAME_SEPARATOR, di.SerialNumber, Constants.DEVICE_NAME_SEPARATOR, di.DeviceID);
+                        }
+                    }
+
+                    /* add all names to the internal list */
+                    if (name != String.Empty)
+                        m_deviceNames.Add(name);
+
+                    /* add only unused device names to the return list */
+                    bool addToUnusedList = true;
+
+                    foreach (DaqDevice device in m_daqDeviceList)
+                    {
+                        if (device.DeviceInfo.DisplayName == di.DisplayName && device.DeviceInfo.SerialNumber == di.SerialNumber)
+                        {
+                            addToUnusedList = false;
+                        }
+                    }
+
+                    if (addToUnusedList)
+                        unusedDeviceNames.Add(name);
+                }
+            }
+            else
+            {
+                throw new DaqException(ErrorMessages.PlatformNotSupported, ErrorCodes.PlatformNotSupported);
+            }
+
+            return unusedDeviceNames.ToArray();
         }
 
         //=========================================================================================================
@@ -293,6 +406,25 @@ namespace MeasurementComputing.DAQFlex
             m_daqDeviceList.Remove(daqDevice);
         }
 
+        //======================================================================
+        /// <summary>
+        /// Creates a DeviceInfo object for a virtual device
+        /// </summary>
+        //======================================================================
+        internal static void AddVirtualDeviceInfo()
+        {
+            DeviceInfo di = new DeviceInfo();
+
+            di.DeviceNumber = m_deviceInfoList.Count;
+            di.DeviceID = String.Empty;
+            di.DeviceName = di.DisplayName = "VIRTUAL-DEVICE";
+            di.SerialNumber = "00000001"; // make dynamic for support of more than 1
+            di.Pid = 0x0000;
+            di.Vid = 0x09DB;
+
+            m_deviceInfoList.Add(di.DeviceNumber, di);
+        }
+
         //===========================================================================
         /// <summary>
         /// Determines if the device with the specified pid is supported by this API
@@ -305,71 +437,169 @@ namespace MeasurementComputing.DAQFlex
             return DaqDeviceFactory.IsSupportedDevice(pid);
         }
 
-        //===========================================================================
+#warning make sure unit tests and devsCapsManager compile without these
+        ////===========================================================================
+        ///// <summary>
+        ///// Gets the device's PID from the device list
+        ///// </summary>
+        ///// <param name="index">Index of device</param>
+        ///// <returns>The PID</returns>
+        ////===========================================================================
+        //internal static int GetDeviceID(int index)
+        //{
+        //    int devID = 0;
+
+        //    if (index < m_deviceInfoList.Count)
+        //        devID = m_deviceInfoList[index].Pid;
+
+        //    return devID;
+        //}
+
+        ////===========================================================================
+        ///// <summary>
+        ///// Gets a device's index into the device info list based on device ID and serno
+        ///// </summary>
+        ///// <param name="devID">The device ID</param>
+        ///// <param name="serno">The serno</param>
+        ///// <returns>The index</returns>
+        ////===========================================================================
+        //internal static int GetDeviceIndex(long devID, ulong serno)
+        //{
+        //    int index = -1;
+
+        //    foreach (KeyValuePair<int, DeviceInfo> kvp in m_deviceInfoList)
+        //    {
+        //        ulong sn = UInt64.Parse(kvp.Value.SerialNumber, System.Globalization.NumberStyles.AllowHexSpecifier);
+
+        //        index++;
+
+        //        if (kvp.Value.Pid == devID && sn == serno)
+        //        {
+        //            return index;
+        //        }
+        //    }
+
+        //    return index;
+        //}
+
+        ////===========================================================================
+        ///// <summary>
+        ///// Gets the device's serial number from the device list
+        ///// </summary>
+        ///// <param name="index">Index of device</param>
+        ///// <returns>The serial number</returns>
+        ////===========================================================================
+        //internal static long GetDeviceSerno(int index)
+        //{
+        //    long serno = 0;
+
+        //    try
+        //    {
+        //        if (index < m_deviceInfoList.Count)
+        //            serno = Int64.Parse(m_deviceInfoList[index].SerialNumber, System.Globalization.NumberStyles.AllowHexSpecifier);
+        //    }
+        //    catch (Exception)
+        //    {
+        //    }
+
+        //    return serno;
+        //}
+
+        //======================================================================================
         /// <summary>
-        /// Gets the device's PID from the device list
+        /// Gets the device name based on the product ID
         /// </summary>
-        /// <param name="index">Index of device</param>
-        /// <returns>The PID</returns>
-        //===========================================================================
-        internal static int GetDeviceID(int index)
+        /// <param name="pid">The product ID</param>
+        /// <returns>Name of the device</returns>
+        //======================================================================================
+        internal static string GetDeviceName(int pid)
         {
-            int devID = 0;
+            string deviceName = String.Empty;
 
-            if (index < m_deviceInfoList.Count)
-                devID = m_deviceInfoList[index].Pid;
+            DeviceIDs deviceId = (DeviceIDs)pid;
 
-            return devID;
+            switch (deviceId)
+            {
+                case (DeviceIDs.Usb7202ID):
+                    deviceName = "USB-7202";
+                    break;
+                case (DeviceIDs.Usb7204ID):
+                    deviceName = "USB-7204";
+                    break;
+                case (DeviceIDs.Usb2001TcID):
+                    deviceName = "USB-2001-TC";
+                    break;
+                case (DeviceIDs.Usb2408ID):
+                    deviceName = "USB-2408";
+                    break;
+                case (DeviceIDs.Usb2408_2AoID):
+                    deviceName = "USB-2408-2AO";
+                    break;
+                case (DeviceIDs.Usb1608GID):
+                    deviceName = "USB-1608G";
+                    break;
+                case (DeviceIDs.Usb1608GXID):
+                    deviceName = "USB-1608GX";
+                    break;
+                case (DeviceIDs.Usb1608GX2AoID):
+                    deviceName = "USB-1608GX-2AO";
+                    break;
+                case (DeviceIDs.Usb204ID):
+                    deviceName = "USB-204";
+                    break;
+                    
+                 case (DeviceIDs.Usb1208FSPlus):
+                     deviceName = "USB-1208FS-Plus";
+                     break;
+                     
+                case DeviceIDs.Usb1408FSPlus:
+                     deviceName = "USB-1408FS-Plus";
+                     break;
+                     
+                case (DeviceIDs.Usb1608FSPlus):
+                    deviceName = "USB-1608FS-Plus";
+                    break;
+
+                case (DeviceIDs.Usb1208FSPlusBOOT):
+                    deviceName = "USB-1208FS-Plus-BootLoader";
+                    break;
+
+                case (DeviceIDs.Usb1408FSPlusBOOT):
+                    deviceName = "USB-1408FS-Plus-BootLoader";
+                    break;
+
+                case (DeviceIDs.Usb1608FSPlusBOOT):
+                    deviceName = "USB-1608FS-Plus-BootLoader";
+                    break;
+
+                case DeviceIDs.Usb7110:
+                    deviceName = "USB-7110";
+                    break;
+
+                case DeviceIDs.Usb7112:
+                    deviceName = "USB-7112";
+                    break;
+
+                case DeviceIDs.Usb711xBOOT:
+                    deviceName = "USB-711x-BootLoader";
+                    break;
+                    
+                default:
+                    deviceName = "Unknown Device";
+                    break;
+            }
+
+            return deviceName;
         }
 
-        //===========================================================================
+        //=====================================================================
         /// <summary>
-        /// Gets a device's index into the device info list based on device ID and serno
+        /// Returns the default culture name
         /// </summary>
-        /// <param name="devID">The device ID</param>
-        /// <param name="serno">The serno</param>
-        /// <returns>The index</returns>
-        //===========================================================================
-        internal static int GetDeviceIndex(long devID, ulong serno)
+        //=====================================================================
+        internal static string DefaultCultureName
         {
-            int index = -1;
-
-            foreach (KeyValuePair<int, DeviceInfo> kvp in m_deviceInfoList)
-            {
-                ulong sn = UInt64.Parse(kvp.Value.SerialNumber, System.Globalization.NumberStyles.AllowHexSpecifier);
-
-                index++;
-
-                if (kvp.Value.Pid == devID && sn == serno)
-                {
-                    return index;
-                }
-            }
-
-            return index;
-        }
-
-        //===========================================================================
-        /// <summary>
-        /// Gets the device's serial number from the device list
-        /// </summary>
-        /// <param name="index">Index of device</param>
-        /// <returns>The serial number</returns>
-        //===========================================================================
-        internal static long GetDeviceSerno(int index)
-        {
-            long serno = 0;
-
-            try
-            {
-                if (index < m_deviceInfoList.Count)
-                    serno = Int64.Parse(m_deviceInfoList[index].SerialNumber, System.Globalization.NumberStyles.AllowHexSpecifier);
-            }
-            catch (Exception)
-            {
-            }
-
-            return serno;
+            get { return m_defaultCultureName; }
         }
 
         //=====================================================================

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Windows.Forms;
 using MeasurementComputing.DAQFlex;
 
 namespace DOut
@@ -23,30 +24,10 @@ namespace DOut
                         deviceComboBox.Items.Add(name);
 
                     deviceComboBox.SelectedIndex = 0;
-
-                    // Get number of supported channels
-                    DaqResponse response = Device.SendMessage("@DIO:CHANNELS");
-
-                    if (!response.ToString().Contains("NOT_SUPPRORTED"))
-                    {
-                        int channels = (int)response.ToValue();
-
-                        for (int i = 0; i < channels; i++)
-                            portComboBox.Items.Add(i.ToString());
-
-                        portComboBox.SelectedIndex = 0;
-
-                        portRadioButton.Checked = true;
-                    }
-                    else
-                    {
-                        DisableControls();
-                        statusLabel.Text = "The selected device does not support digital output!";
-                    }
                 }
                 else
                 {
-                    DisableControls();
+                    EnableControls(false);
                     statusLabel.Text = "No devices detected!";
                 }
             }
@@ -56,6 +37,35 @@ namespace DOut
             }
 
             base.OnLoad(e);
+        }
+
+        private void InitializeControls()
+        {
+            // Get number of supported channels
+            DaqResponse response = Device.SendMessage("@DIO:CHANNELS");
+
+            if (!response.ToString().Contains("NOT_SUPPORTED"))
+            {
+                EnableControls(true);
+
+                int channels = (int)response.ToValue();
+
+                portComboBox.Items.Clear();
+
+                for (int i = 0; i < channels; i++)
+                    portComboBox.Items.Add(i.ToString());
+
+                portComboBox.SelectedIndex = 0;
+
+                portRadioButton.Checked = true;
+
+                statusLabel.Text = String.Empty;
+            }
+            else
+            {
+                EnableControls(false);
+                statusLabel.Text = "The selected device does not support digital output!";
+            }
         }
 
         private void OnDeviceChanged(object sender, EventArgs e)
@@ -69,7 +79,12 @@ namespace DOut
                 string name = deviceComboBox.SelectedItem.ToString();
 
                 // Create a new device object
+                Cursor.Current = Cursors.WaitCursor;
                 Device = DaqDeviceManager.CreateDevice(name);
+
+                InitializeControls();
+
+                Cursor.Current = Cursors.Default;
             }
             catch (Exception ex)
             {
@@ -179,19 +194,19 @@ namespace DOut
             }
         }
 
-        private void DisableControls()
+        private void EnableControls(bool enableState)
         {
-            portComboBox.Enabled = false;
-            portRadioButton.Enabled = false;
-            bitRadioButton.Enabled = false;
-            checkBox1.Enabled = false;
-            checkBox2.Enabled = false;
-            checkBox3.Enabled = false;
-            checkBox4.Enabled = false;
-            checkBox5.Enabled = false;
-            checkBox6.Enabled = false;
-            checkBox7.Enabled = false;
-            checkBox8.Enabled = false;
+            portComboBox.Enabled = enableState;
+            portRadioButton.Enabled = enableState;
+            bitRadioButton.Enabled = enableState;
+            checkBox1.Enabled = enableState;
+            checkBox2.Enabled = enableState;
+            checkBox3.Enabled = enableState;
+            checkBox4.Enabled = enableState;
+            checkBox5.Enabled = enableState;
+            checkBox6.Enabled = enableState;
+            checkBox7.Enabled = enableState;
+            checkBox8.Enabled = enableState;
         }
     }
 }

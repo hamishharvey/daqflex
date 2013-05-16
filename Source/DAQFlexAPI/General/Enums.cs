@@ -17,10 +17,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Text;
 
 namespace MeasurementComputing.DAQFlex
 {
+    //=====================================================
+    /// <summary>
+    /// List of supported device name formats
+    /// </summary>
+    //=====================================================
     public enum DeviceNameFormat
     {
         NameOnly,
@@ -29,16 +35,11 @@ namespace MeasurementComputing.DAQFlex
         NameSernoAndID
     }
 
-    //internal enum MessageDataType
-    //{
-    //    None,
-    //    Ai,
-    //    Ao,
-    //    Dio,
-    //    Ctr,
-    //    Tmr
-    //}
-
+    //=====================================================
+    /// <summary>
+    /// List of supported USB endpoint types
+    /// </summary>
+    //=====================================================
     internal enum UsbPipeType
     {
         Control = 0,
@@ -46,7 +47,12 @@ namespace MeasurementComputing.DAQFlex
         Bulk = 2,
         Interrupt = 3,
     }
-    
+
+    //=====================================================
+    /// <summary>
+    /// List of USB config info flags
+    /// </summary>
+    //=====================================================
     internal enum UsbDeviceConfigInfoFlags
     {
         Default = 1,
@@ -56,6 +62,11 @@ namespace MeasurementComputing.DAQFlex
         DeviceInterface = 16,
     }
 
+    //=====================================================
+    /// <summary>
+    /// List of supported USB transfer types
+    /// </summary>
+    //=====================================================
     internal enum UsbTransferTypes
     {
         ControlIn = 0,
@@ -64,12 +75,23 @@ namespace MeasurementComputing.DAQFlex
         BulkOut = 3,
     }
 
+    //=====================================================
+    /// <summary>
+    /// List of supported sampling modes for
+    /// input and output scans
+    /// </summary>
+    //=====================================================
     internal enum SampleMode
     {
         Finite = 0,
         Continuous = 1,
     }
 
+    //=====================================================
+    /// <summary>
+    /// List of supported input scan transfer modes
+    /// </summary>
+    //=====================================================
     internal enum TransferMode
     {
         Default,
@@ -78,14 +100,11 @@ namespace MeasurementComputing.DAQFlex
         BurstIO,
     }
 
-    internal enum FeatureImplementation
-    {
-        Fixed,
-        Programmable,
-        HWSelectable,
-        NotApplicable,
-    }
-
+    //=====================================================
+    /// <summary>
+    /// list of supported scan states
+    /// </summary>
+    //=====================================================
     internal enum ScanState
     {
         Idle = 0,
@@ -94,6 +113,11 @@ namespace MeasurementComputing.DAQFlex
         Underrun = 3,
     }
 
+    //=====================================================
+    /// <summary>
+    /// list of hw-paced scan types
+    /// </summary>
+    //=====================================================
     internal enum ScanType
     {
         None,
@@ -106,6 +130,11 @@ namespace MeasurementComputing.DAQFlex
         CompositeOutput,
     }
 
+    //=====================================================
+    /// <summary>
+    /// list of data types supported by various devices
+    /// </summary>
+    //=====================================================
     internal enum DeviceDataTypes
     {
         Bool = 0x00,
@@ -126,46 +155,66 @@ namespace MeasurementComputing.DAQFlex
         Invalid = 0x0F
     }
 
-    internal enum ResponseType
-    {
-        // Single is Text response only
-        Simple,
-
-        // Composite is Text and Numeric response
-        Composite
-    }
-
-    //internal enum SyncMode
-    //{
-    //    Master,
-    //    Slave,
-    //    GatedSlave,
-    //}
-
-    internal enum ClockSource
-    {
-        Internal,
-        External
-    }
-
+    //=====================================================
+    /// <summary>
+    /// List of analog input conversion modes
+    /// </summary>
+    //=====================================================
     internal enum InputConversionMode
     {
         Simultaneous,
         Multiplexed
     }
 
+    //==========================================================
+    /// <summary>
+    /// List of queue actions to support concurrent operations
+    /// on queues
+    /// </summary>
+    //==========================================================
     internal enum QueueAction
     {
         Enqueue,
         Dequeue
     }
 
-    internal enum AiChannelMode
+    //==========================================================
+    /// <summary>
+    /// 
+    /// </summary>
+    //==========================================================
+    [EditorBrowsable(EditorBrowsableState.Never)]
+    public enum DeviceListUsage
     {
-        SingleEnded,
-        Differential
+        ReuseList,
+        RefreshList,
+        UpdateList
     }
 
+    //internal enum AiChannelMode
+    //{
+    //    SingleEnded,
+    //    Differential,
+    //    Otd,
+    //    NoOtd
+    //}
+
+    //===============================================================
+    /// <summary>
+    /// List of supported analog input channel types
+    /// </summary>
+    //===============================================================
+    internal enum AiChannelTypes
+    {
+        Voltage,
+        Temperature,
+    }
+
+    //===============================================================
+    /// <summary>
+    /// List of supported thermocouple types
+    /// </summary>
+    //===============================================================
     internal enum ThermocoupleTypes
     {
         NotSet,
@@ -179,29 +228,35 @@ namespace MeasurementComputing.DAQFlex
         TypeT
     }
 
+    //===============================================================
+    /// <summary>
+    /// List of supported temperature units
+    /// </summary>
+    //===============================================================
     internal enum TemperatureUnits
     {
         None,
         Celsius,
         Fahrenheit,
-        Kelvin
+        Kelvin,
+        Volts
     }
 
+    //===============================================================
+    /// <summary>
+    /// List of various supported counter types
+    /// </summary>
+    //===============================================================
     internal enum CounterTypes
     {
-        Type1,
-        Type2,
-        Type3,
-        Type4,
-        Event = 5,
+        Event = 1,
     }
 
-    public enum CallbackOperation
-    {
-        InputScan,
-        OutputScan,
-    }
-
+    //===============================================================
+    /// <summary>
+    /// List of events that invoke callback methods
+    /// </summary>
+    //===============================================================
     public enum CallbackType
     {
         OnDataAvailable = 1,
@@ -217,8 +272,25 @@ namespace MeasurementComputing.DAQFlex
     //===============================================================
     internal enum DeviceIDs
     {
-        Usb7204ID = 240,
-        Usb7202ID = 242,
-        Usb2001TcID = 249,
+        VirtualDeviceID = 0x00,
+        Usb7204ID = 0xf0,
+        Usb7202ID = 0xf2,
+        Usb2001TcID = 0xf9,
+        Usb2408ID = 0xfd,
+        Usb2408_2AoID = 0xfe,
+        Usb1608GID = 0x110,
+        Usb1608GXID = 0x111,
+        Usb1608GX2AoID = 0x112,
+        Usb201ID = 0x113,
+        Usb204ID = 0x114,
+        Usb1208FSPlus = 0xe8,
+        Usb1408FSPlus = 0xe9,
+        Usb1608FSPlus = 0xea,
+        Usb7110 = 0x116,
+        Usb7112 = 0x117,
+        Usb711xBOOT = 0x8116,
+        Usb1208FSPlusBOOT= 0x80e8,
+        Usb1408FSPlusBOOT= 0x80e9,
+        Usb1608FSPlusBOOT= 0x80ea
     }
 }

@@ -28,6 +28,8 @@ namespace MeasurementComputing.DAQFlex.Test
                 aoScanMessageComboBox.Enabled = true;
                 aoScanSendMessageButton.Enabled = true;
 
+                commands.Sort();
+
                 foreach (string command in commands)
                     aoScanMessageComboBox.Items.Add(command);
 
@@ -79,7 +81,7 @@ namespace MeasurementComputing.DAQFlex.Test
                     SetAoScanCriticalParams(message);
 
                     // if the start message was sent then read the data
-                    if (message.Contains("START"))
+                    if (message.Contains("AOSCAN:START"))
                     {
                         m_stopAoScan = false;
                         WriteScanData();
@@ -93,6 +95,14 @@ namespace MeasurementComputing.DAQFlex.Test
 
                     // display the response
                     aoScanResponseTextBox.Text = response.ToString();
+
+                    double numericResponse = response.ToValue();
+
+                    if (!Double.IsNaN(numericResponse))
+                        aoScanNumericResponseTextBox.Text = numericResponse.ToString();
+                    else
+                        aoScanNumericResponseTextBox.Text = String.Empty;
+
                     Application.DoEvents();
 
                     if (message.Contains("START"))
@@ -143,38 +153,14 @@ namespace MeasurementComputing.DAQFlex.Test
             double increment = (2.0 * Math.PI) / samples;
             double angle = 0.0;
 
-            // determine bipolar or unipolar range
-            string range = m_daqDevice.SendMessage("?AO{0}:RANGE").ToString();
-
-            if (range.Contains("BIP"))
+            for (int i = 0; i < channelCount; i++)
             {
-                // bipolar range
-                for (int i = 0; i < channelCount; i++)
+                for (int j = 0; j < samples; j++)
                 {
-                    for (int j = 0; j < samples; j++)
-                    {
-                        scanData[i, j] = (int)(maxCount * Math.Sin(angle + (i * Math.PI / 2)));
-                        angle += increment;
-                    }
+                    scanData[i, j] = (int)((maxCount / 2) + ((maxCount / 2) * Math.Sin(angle + (i * Math.PI / 2))));
+                    angle += increment;
                 }
             }
-            else
-            {
-                // unipolar range
-                for (int i = 0; i < channelCount; i++)
-                {
-                    for (int j = 0; j < samples; j++)
-                    {
-                        scanData[i, j] = (int)((maxCount / 2) + ((maxCount / 2) * Math.Sin(angle + (i * Math.PI / 2))));
-                        angle += increment;
-                    }
-                }
-            }
-
-            // set the buffer size in bytes
-            int bufSize = GetBufferSize(maxCount, channelCount, samples);
-
-            m_daqDevice.SendMessage("AOSCAN:BUFSIZE=" + bufSize.ToString());
 
             // write the scan data
             m_daqDevice.WriteScanData(scanData, samples, 0);
@@ -199,29 +185,6 @@ namespace MeasurementComputing.DAQFlex.Test
 
                 Application.DoEvents();
             }
-        }
-
-        //===============================================================================
-        /// <summary>
-        /// Calculates the buffer size based on the parameters passed ing
-        /// </summary>
-        /// <param name="maxCount">The D/A's max count</param>
-        /// <param name="channelCount">The number of channels in the scan</param>
-        /// <param name="samples">The number of samples</param>
-        /// <returns></returns>
-        //===============================================================================
-        private int GetBufferSize(int maxCount, int channelCount, int samples)
-        {
-            int bytesPerSample = 0;
-            int count = maxCount;
-
-            do
-            {
-                count = count >> 8;
-                bytesPerSample++;
-            } while (count > 0);
-
-            return bytesPerSample * channelCount * samples;
         }
 
         //======================================================================================

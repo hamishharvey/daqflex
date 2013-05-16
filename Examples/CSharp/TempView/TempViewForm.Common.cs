@@ -32,6 +32,7 @@ namespace TempView
         private string TcType;
         private StreamWriter StreamWriter;
         private bool AppendFile = false;
+        private string Channel;
 
         protected override void OnLoad(EventArgs e)
         {
@@ -71,25 +72,58 @@ namespace TempView
 
             if (SetupDialog.DaqDevice != null)
             {
-                DaqDevice = SetupDialog.DaqDevice;
-                DeviceName = SetupDialog.DeviceName.Split(new char[] { ':' })[0];
-                DeviceSerno = SetupDialog.DeviceName.Split(new char[] { ':' })[2];
-                TcType = SetupDialog.TcType;
-                SendDeviceMessage("AI{0}:SENSOR=TC/" + TcType);
-                SelectedUnits = SetupDialog.Units;
-                SamplePeriod = SetupDialog.SamplePeriod;
-                LogData = SetupDialog.LogData;
-                Notes = SetupDialog.Description;
-                yLabel.Text = SelectedUnits;
-
-                if (LogData)
+                if (SetupDialog.SupportsTemperature)
                 {
-                    LogFile = SetupDialog.LogFile;
-                    Notes = SetupDialog.Description;
-                }
+                    string msg;
 
-                startButton.Enabled = true;
-                stopButton.Enabled = true;
+                    DaqDevice = SetupDialog.DaqDevice;
+                    DeviceName = SetupDialog.DeviceName.Split(new char[] { ':' })[0];
+                    DeviceSerno = SetupDialog.DeviceName.Split(new char[] { ':' })[2];
+                    TcType = SetupDialog.TcType;
+                    Channel = SetupDialog.Channel;
+
+                    // try setting the channel mode if it's programmable
+                    try
+                    {
+                        msg = "AI{*}:CHMODE=#";
+                        msg = msg.Replace("*", Channel);
+                        msg = msg.Replace("#", SetupDialog.ChannelMode);
+                        DaqDevice.SendMessage(msg);
+                    }
+                    catch (Exception)
+                    {
+                        try
+                        {
+                            msg = "AI:CHMODE=#";
+                            msg = msg.Replace("#", SetupDialog.ChannelMode);
+                            DaqDevice.SendMessage(msg);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                    }
+
+                    // set the sensor type for the selected channel
+                    msg = "AI{*}:SENSOR=TC/#";
+                    msg = msg.Replace("*", Channel);
+                    msg = msg.Replace("#", TcType);
+                    SendDeviceMessage(msg);
+
+                    SelectedUnits = SetupDialog.Units;
+                    SamplePeriod = SetupDialog.SamplePeriod;
+                    LogData = SetupDialog.LogData;
+                    Notes = SetupDialog.Description;
+                    yLabel.Text = SelectedUnits;
+
+                    if (LogData)
+                    {
+                        LogFile = SetupDialog.LogFile;
+                        Notes = SetupDialog.Description;
+                    }
+
+                    startButton.Enabled = true;
+                    stopButton.Enabled = true;
+                }
             }
 
         }
@@ -227,15 +261,25 @@ namespace TempView
         {
             try
             {
+                string msg;
+
                 if (SelectedUnits == DEG_C)
-                    CurrentValue = DaqDevice.SendMessage("?AI{0}:VALUE/DEGC").ToValue();
+                {
+                    msg = "?AI{*}:VALUE/DEGC";
+                    msg = msg.Replace("*", Channel);
+                    CurrentValue = DaqDevice.SendMessage(msg).ToValue();
+                }
                 else
-                    CurrentValue = DaqDevice.SendMessage("?AI{0}:VALUE/DEGF").ToValue();
+                {
+                    msg = "?AI{*}:VALUE/DEGF";
+                    msg = msg.Replace("*", Channel);
+                    CurrentValue = DaqDevice.SendMessage(msg).ToValue();
+                }
 
                 if (LogData && sender != null && StreamWriter != null)
                     StreamWriter.WriteLine(String.Format("{0}{1}{2}", SampleCount * SamplePeriod, "\t\t", CurrentValue));
 
-                if (CurrentValue == -9999.0)
+                if (CurrentValue == Graph.OPEN_THERMOCOUPLE)
                     valueLabel.Text = "OTD";
                 else
                     valueLabel.Text = String.Format("{0} {1}", CurrentValue.ToString("F02"), SelectedUnits);
@@ -246,9 +290,15 @@ namespace TempView
             }
             catch (DaqException e)
             {
-                OnStopLogging(null, null);
-
-                MessageBox.Show(e.Message, "TempView", MessageBoxButtons.OK, MessageBoxIcon.Exclamation, MessageBoxDefaultButton.Button1);
+                if (e.ErrorCode == ErrorCodes.OpenThermocouple)
+                {
+                    valueLabel.Text = "OTD";
+                }
+                else
+                {
+                    OnStopLogging(null, null);
+                    MessageBox.Show(e.Message, "TempView", MessageBoxButtons.OK, MessageBoxIcon.Exclamation, MessageBoxDefaultButton.Button1);
+                }
             }
         }
 

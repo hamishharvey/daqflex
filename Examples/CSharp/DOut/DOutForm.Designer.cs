@@ -164,6 +164,7 @@ namespace DOut
             // 
             // portComboBox
             // 
+            this.portComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.portComboBox.Location = new System.Drawing.Point(83, 47);
             this.portComboBox.Name = "portComboBox";
             this.portComboBox.Size = new System.Drawing.Size(97, 21);
@@ -181,6 +182,7 @@ namespace DOut
             // 
             // deviceComboBox
             // 
+            this.deviceComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.deviceComboBox.Location = new System.Drawing.Point(83, 9);
             this.deviceComboBox.Name = "deviceComboBox";
             this.deviceComboBox.Size = new System.Drawing.Size(242, 21);

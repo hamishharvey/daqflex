@@ -21,7 +21,7 @@ using System.Text;
 
 namespace MeasurementComputing.DAQFlex
 {
-    class Usb7202Ai : AiComponent
+    class Usb7202Ai : FixedModeAiComponent
     {
         //=================================================================================================================
         /// <summary>
@@ -33,12 +33,18 @@ namespace MeasurementComputing.DAQFlex
         internal Usb7202Ai(DaqDevice daqDevice, DeviceInfo deviceInfo)
             : base(daqDevice, deviceInfo, 8)
         {
-            m_dataWidth = 16;
-            m_maxCount = (int)Math.Pow(2, m_dataWidth) - 1;
+        }
 
-            InitializeRanges();
-            InitializeChannelModes();
-            SetDefaultCriticalParams(deviceInfo);
+        //=================================================================================================================
+        /// <summary>
+        /// Overriden to set the 0 length packet flag
+        /// </summary>
+        //=================================================================================================================
+        internal override void Initialize()
+        {
+            base.Initialize();
+
+            m_daqDevice.CriticalParams.Requires0LengthPacketForSingleIO = true;
         }
 
         //=================================================================================================================
@@ -48,11 +54,11 @@ namespace MeasurementComputing.DAQFlex
         //=================================================================================================================
         internal override void InitializeChannelModes()
         {
-            m_channelModes = new AiChannelMode[m_maxChannels];
+            m_channelModes = new string[m_maxChannels];
 
             // this device is fixed at single-ended
             for (int i = 0; i < m_channelModes.Length; i++)
-                m_channelModes[i] = AiChannelMode.SingleEnded;
+                m_channelModes[i] = PropertyValues.SE;
         }
 
         //=================================================================================================================
@@ -63,15 +69,35 @@ namespace MeasurementComputing.DAQFlex
         internal override void InitializeRanges()
         {
             // create supported ranges list
-            m_supportedRanges.Add(PropertyValues.BIP10V + ":SE", new Range(10.0, -10.0));
-            m_supportedRanges.Add(PropertyValues.BIP5V + ":SE", new Range(5.0, -5.0));
-            m_supportedRanges.Add(PropertyValues.BIP2V + ":SE", new Range(2.0, -2.0));
-            m_supportedRanges.Add(PropertyValues.BIP1V + ":SE", new Range(1.0, -1.0));
+            m_supportedRanges.Add(MessageTranslator.ConvertToCurrentCulture(PropertyValues.BIP10V) + ":SE", new Range(10.0, -10.0));
+            m_supportedRanges.Add(MessageTranslator.ConvertToCurrentCulture(PropertyValues.BIP5V) + ":SE", new Range(5.0, -5.0));
+            m_supportedRanges.Add(MessageTranslator.ConvertToCurrentCulture(PropertyValues.BIP2V) + ":SE", new Range(2.0, -2.0));
+            m_supportedRanges.Add(MessageTranslator.ConvertToCurrentCulture(PropertyValues.BIP1V) + ":SE", new Range(1.0, -1.0));
 
+            // store the current ranges for each channel
+            for (int i = 0; i < m_channelCount; i++)
+                m_ranges[i] = String.Format("{0}{1}:{2}={3}", DaqComponents.AI, MessageTranslator.GetChannelSpecs(i), DaqProperties.RANGE, MessageTranslator.ConvertToCurrentCulture(PropertyValues.BIP10V));
+        }
+
+        //========================================================================================
+        /// <summary>
+        /// Overriden to read in the AI calibration coefficients
+        /// </summary>
+        //========================================================================================
+        protected override void GetCalCoefficients()
+        {
+            string msg;
+            string response;
+            string defaultRange;
 
             // get and store cal coefficients for each range - 8 chs, 4 ranges
             for (int i = 0; i < m_channelCount; i++)
             {
+                msg = String.Format("?AI{0}:RANGE", MessageTranslator.GetChannelSpecs(i));
+                m_daqDevice.SendMessageDirect(msg);
+                response = m_daqDevice.DriverInterface.ReadStringDirect();
+                defaultRange = MessageTranslator.GetPropertyValue(response);
+
                 foreach (KeyValuePair<string, Range> kvp in m_supportedRanges)
                 {
                     // set the range
@@ -81,43 +107,16 @@ namespace MeasurementComputing.DAQFlex
 
                     // get the slope and offset for the range
                     m_daqDevice.SendMessageDirect(String.Format("?AI{0}:SLOPE", MessageTranslator.GetChannelSpecs(i)));
-                    double slope = m_daqDevice.DriverInterface.ReadValue();
+                    double slope = m_daqDevice.DriverInterface.ReadValueDirect();
                     m_daqDevice.SendMessageDirect(String.Format("?AI{0}:OFFSET", MessageTranslator.GetChannelSpecs(i)));
-                    double offset = m_daqDevice.DriverInterface.ReadValue();
-
-                    // if there are no coeffs stored in eeprom yet, set defaults
-                    if (slope == 0 || Double.IsNaN(slope))
-                    {
-                        slope = 1;
-                        offset = 0;
-                    }
+                    double offset = m_daqDevice.DriverInterface.ReadValueDirect();
 
                     m_calCoeffs.Add(String.Format("Ch{0}:{1}", i, kvp.Key), new CalCoeffs(slope, offset));
                 }
+                // restore default range
+                msg = String.Format("AI{0}:RANGE={1}", MessageTranslator.GetChannelSpecs(i), defaultRange);
+                m_daqDevice.SendMessageDirect(msg);
             }
-
-            // store the current ranges for each channel
-            for (int i = 0; i < m_channelCount; i++)
-                m_ranges[i] = String.Format("{0}{1}:{2}={3}", DaqComponents.AI, MessageTranslator.GetChannelSpecs(i), DaqProperties.RANGE, PropertyValues.BIP10V);
-        }
-
-        //===========================================================================================
-        /// <summary>
-        /// Overriden to set the default critical params
-        /// </summary>
-        //===========================================================================================
-        internal override void SetDefaultCriticalParams(DeviceInfo deviceInfo)
-        {
-            m_daqDevice.DriverInterface.CriticalParams.InputConversionMode = InputConversionMode.Simultaneous;
-            m_daqDevice.DriverInterface.CriticalParams.InputPacketSize = deviceInfo.MaxPacketSize;
-            m_daqDevice.DriverInterface.CriticalParams.AiDataWidth = m_dataWidth;
-            m_daqDevice.DriverInterface.CriticalParams.InputScanRate = 1000;
-            m_daqDevice.DriverInterface.CriticalParams.InputScanSamples = 100;
-            m_daqDevice.DriverInterface.CriticalParams.LowAiChannel = 0;
-            m_daqDevice.DriverInterface.CriticalParams.HighAiChannel = 3;
-            m_daqDevice.DriverInterface.CriticalParams.AiChannelCount = 4;
-            m_daqDevice.DriverInterface.CriticalParams.InputXferSize =
-                            m_daqDevice.DriverInterface.GetOptimalInputBufferSize(m_daqDevice.DriverInterface.CriticalParams.InputScanRate);
         }
 
         //=========================================================================================
@@ -125,42 +124,13 @@ namespace MeasurementComputing.DAQFlex
         /// Let the JIT compiler compile critical methods
         /// </summary>
         //=========================================================================================
-        internal override void Initialize()
+        internal override void ConfigureScan()
         {
-            base.Initialize();
-
-            int lowChannel = m_daqDevice.DriverInterface.CriticalParams.LowAiChannel;
-            int highChannel = m_daqDevice.DriverInterface.CriticalParams.HighAiChannel;
-            double rate = m_daqDevice.DriverInterface.CriticalParams.InputScanRate;
-            int samples = m_daqDevice.DriverInterface.CriticalParams.InputScanSamples;
-
-            m_daqDevice.SendMessage("AISCAN:RANGE=BIP10V");
-            m_daqDevice.SendMessage("AISCAN:XFRMODE=BLOCKIO");
-            m_daqDevice.SendMessage("AISCAN:DEBUG=DISABLE");
-            m_daqDevice.SendMessage("AISCAN:CAL=ENABLE");
-            m_daqDevice.SendMessage("AISCAN:EXTPACER=DISABLE");
-            m_daqDevice.SendMessage("AISCAN:TRIG=DISABLE");
-            m_daqDevice.SendMessage(String.Format("AISCAN:LOWCHAN={0}", lowChannel));
-            m_daqDevice.SendMessage(String.Format("AISCAN:HIGHCHAN={0}", highChannel));
-            m_daqDevice.SendMessage(String.Format("AISCAN:RATE={0}", rate));
-            m_daqDevice.SendMessage(String.Format("AISCAN:SAMPLES={0}", samples));
-            m_daqDevice.SendMessage("AISCAN:START");
-
-#pragma warning disable 219
-            double[,] multiChannelData = m_daqDevice.ReadScanData(64, 3000);
-#pragma warning restore 219
-
-            string status;
-
-            do
-            {
-                status = m_daqDevice.SendMessage("?AISCAN:STATUS").ToString();
-                System.Threading.Thread.Sleep(1);
-            } while (status.Contains(PropertyValues.RUNNING));
-
-            System.Diagnostics.Debug.WriteLine(String.Format("status = {0}", status));
-            m_daqDevice.SendMessage("DEV:RESET/DEFAULT");
             m_daqDevice.SendMessage("AISCAN:STALL=ENABLE");
+            m_daqDevice.SendMessage("AISCAN:LOWCHAN=0");
+            m_daqDevice.SendMessage("AISCAN:HIGHCHAN=3");
+            m_daqDevice.SendMessage("AISCAN:RATE=5000");
+            m_daqDevice.SendMessage("AISCAN:SAMPLES=100");
         }
 
         //===========================================================================================
@@ -201,7 +171,7 @@ namespace MeasurementComputing.DAQFlex
                 messages.Add("AISCAN:CAL=*");
                 messages.Add("AISCAN:EXTPACER=*");
                 messages.Add("AISCAN:BUFSIZE=*");
-
+                messages.Add("AISCAN:BUFOVERWRITE=*");
                 messages.Add("AISCAN:START");
                 messages.Add("AISCAN:STOP");
 
@@ -218,6 +188,7 @@ namespace MeasurementComputing.DAQFlex
                 messages.Add("?AISCAN:EXTPACER");
                 messages.Add("?AISCAN:STATUS");
                 messages.Add("?AISCAN:BUFSIZE");
+                messages.Add("?AISCAN:BUFOVERWRITE");
                 messages.Add("?AISCAN:COUNT");
                 messages.Add("?AISCAN:INDEX");
             }
@@ -228,32 +199,6 @@ namespace MeasurementComputing.DAQFlex
             }
 
             return messages;
-        }
-
-        //====================================================================================
-        /// <summary>
-        /// Virutal method to set the clock source options
-        /// </summary>
-        /// <param name="clockSource">The clock source</param>
-        //====================================================================================
-        internal override ErrorCodes SendDeferredClockMessage(ClockSource clockSource)
-        {
-            if (clockSource == ClockSource.External && DeferredClockOptionMessage.Contains(PropertyValues.MASTER))
-                return ErrorCodes.IncompatibleClockOption;
-
-            try
-            {
-                if (clockSource == ClockSource.External)
-                    m_daqDevice.SendMessage(DeferredClockOptionMessage);
-                else
-                    m_daqDevice.SendMessage(m_internalClockOptionMessage);
-                return ErrorCodes.NoErrors;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.Assert(false, ex.Message);
-                return ErrorCodes.UnknownError;
-            }
         }
 
         //=================================================================================================================
@@ -272,6 +217,28 @@ namespace MeasurementComputing.DAQFlex
                 return errorCode;
 
             return ErrorCodes.NoErrors;
+        }
+
+        //====================================================================================================================================
+        /// <summary>
+        /// Virtual method for processing an external pacer message
+        /// </summary>
+        /// <param name="message">The device message</param>
+        /// <returns>An error code</returns>
+        //====================================================================================================================================
+        internal override ErrorCodes PreprocessExtPacer(ref string message)
+        {
+            ErrorCodes errorCode = ErrorCodes.NoErrors;
+
+            if (message != Messages.AISCAN_EXTPACER_ENMASTER &&
+                    message != Messages.AISCAN_EXTPACER_ENSLAVE &&
+                        message != Messages.AISCAN_EXTPACER_DISMASTER &&
+                            message != Messages.AISCAN_EXTPACER_DISSLAVE &&
+                                message != Messages.AISCAN_EXTPACER_ENABLE &&
+                                    message != Messages.AISCAN_EXTPACER_DISABLE)
+                errorCode = ErrorCodes.InvalidPropertyValueSpecified;
+
+            return errorCode;
         }
 
         //===========================================================================================
@@ -306,23 +273,15 @@ namespace MeasurementComputing.DAQFlex
                                         Constants.PROPERTY_SEPARATOR +
                                             DevCapNames.CHANNELS;
 
-                            channels = m_daqDevice.GetDevCapsValue(capsKey, true);
+                            channels = m_daqDevice.GetDevCapsString(capsKey, true);
                             channels = MessageTranslator.GetReflectionValue(channels);
 
                             int chCount = 0;
-#if WindowsCE
-                            try
-                            {
-                                chCount = Int32.Parse(channels);
-                            }
-                            catch (Exception)
-                            {
+
+                            if (!PlatformParser.TryParse(channels, out chCount))
                                 chCount = 0;
-                            }
-#else
-                            Int32.TryParse(channels, out chCount);
-#endif
-                            if (channel >= chCount)
+
+                            if (channel >= chCount || channel < 0)
                                 return ErrorCodes.InvalidAiChannelSpecified;
 
                             capsKey = DaqComponents.AI +
@@ -332,7 +291,7 @@ namespace MeasurementComputing.DAQFlex
                                                     Constants.PROPERTY_SEPARATOR +
                                                         DevCapNames.RANGES;
 
-                            supportedRanges = m_daqDevice.GetDevCapsValue(capsKey, true);
+                            supportedRanges = m_daqDevice.GetDevCapsString(capsKey, true);
 
                             if (!supportedRanges.Contains(rangeValue))
                                 return ErrorCodes.InvalidAiRange;
@@ -351,7 +310,7 @@ namespace MeasurementComputing.DAQFlex
                                                         Constants.PROPERTY_SEPARATOR +
                                                             DevCapNames.RANGES;
 
-                            supportedRanges = m_daqDevice.GetDevCapsValue(capsKey, true);
+                            supportedRanges = m_daqDevice.GetDevCapsString(capsKey, true);
 
                             if (!supportedRanges.Contains(rangeValue))
                                 return ErrorCodes.InvalidAiRange;
@@ -374,6 +333,43 @@ namespace MeasurementComputing.DAQFlex
             return ErrorCodes.NoErrors;
         }
 
+        //===============================================================================================
+        /// <summary>
+        /// Overriden to validate the per channel rate just before AISCAN:START is sent to the device
+        /// </summary>
+        /// <param name="message">The device message</param>
+        //===============================================================================================
+        internal override ErrorCodes ValidateScanRate()
+        {
+            try
+            {
+                int channelCount = m_daqDevice.CriticalParams.HighAiChannel - m_daqDevice.CriticalParams.LowAiChannel + 1;
+                double rate = m_daqDevice.CriticalParams.InputScanRate;
+                double maxRate;
+
+                if (m_daqDevice.CriticalParams.InputTransferMode == TransferMode.BurstIO)
+                {
+                    maxRate = Math.Min(m_maxBurstThroughput / channelCount, m_maxScanRate);
+
+                    if (rate < m_minBurstRate || rate > maxRate)
+                        return ErrorCodes.InvalidScanRateSpecified;
+                }
+                else
+                {
+                    maxRate = Math.Min(m_maxScanThroughput / channelCount, m_maxScanRate);
+
+                    if (rate < m_minScanRate || rate > maxRate)
+                        return ErrorCodes.InvalidScanRateSpecified;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.Assert(false, ex.Message);
+            }
+
+            return ErrorCodes.NoErrors;
+        }
+
         //=================================================================================================================
         /// <summary>
         /// Overriden to determine the transfer mode when its set to default
@@ -390,43 +386,14 @@ namespace MeasurementComputing.DAQFlex
 
         //===========================================================================================
         /// <summary>
-        /// Calibrates an analog input value
+        /// Overriden to set the default critical params resolution
         /// </summary>
-        /// <param name="channel">The channel to scale</param>
-        /// <param name="value">The raw A/D value</param>
-        /// <returns>The calibrated value</returns>
         //===========================================================================================
-        internal override double CalibrateData(int channel, double value)
+        internal override void SetDefaultCriticalParams(DeviceInfo deviceInfo)
         {
-            double calibratedValue = value;
+            base.SetDefaultCriticalParams(deviceInfo);
 
-            if (m_calibrateData)
-            {
-                if (m_activeChannels[0].CalSlope != 0 && !Double.IsNaN(m_activeChannels[0].CalSlope))
-                {
-                    calibratedValue = value * m_activeChannels[0].CalSlope;
-                    calibratedValue += m_activeChannels[0].CalOffset;
-                }
-            }
-
-            return calibratedValue;
-        }
-
-        internal override double GetMinScanRate()
-        {
-            return 0.596;
-        }
-
-        internal override double GetMaxScanRate()
-        {
-            double maxRate;
-
-            if (m_daqDevice.DriverInterface.CriticalParams.InputTransferMode == TransferMode.BurstIO)
-                maxRate = 200000.0 / m_daqDevice.DriverInterface.CriticalParams.AiChannelCount;
-            else
-                maxRate = 50000.0 / m_daqDevice.DriverInterface.CriticalParams.AiChannelCount;
-
-            return maxRate;
+            m_daqDevice.DriverInterface.CriticalParams.AiDataIsSigned = false;
         }
     }
 }

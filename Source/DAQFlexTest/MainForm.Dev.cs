@@ -17,6 +17,8 @@ namespace MeasurementComputing.DAQFlex.Test
             // add the messages to the message combobox
             devMessageComboBox.Items.Clear();
 
+            commands.Sort();
+
             foreach (string command in commands)
                 devMessageComboBox.Items.Add(command);
 
@@ -44,6 +46,13 @@ namespace MeasurementComputing.DAQFlex.Test
                 DaqResponse response = m_daqDevice.SendMessage(message);
 
                 devResponseTextBox.Text = response.ToString();
+
+                double numericResponse = response.ToValue();
+
+                if (!Double.IsNaN(numericResponse))
+                    deviceNumericResponseTextBox.Text = numericResponse.ToString();
+                else
+                    deviceNumericResponseTextBox.Text = String.Empty;
                 
                 statusLabel.Text = "Success";
             }

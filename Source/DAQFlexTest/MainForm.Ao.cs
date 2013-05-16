@@ -22,10 +22,20 @@ namespace MeasurementComputing.DAQFlex.Test
                 aoMessageComboBox.Enabled = true;
                 aoSendMessageButton.Enabled = true;
 
+                commands.Sort();
+
                 foreach (string command in commands)
                     aoMessageComboBox.Items.Add(command);
 
                 aoMessageComboBox.SelectedIndex = 0;
+
+                // check if the device support self calibration
+                string response = m_daqDevice.SendMessage("@AO:SELFCAL").ToString();
+
+                if (response.Contains("NOT_SUPPORTED"))
+                    aoCalibrateButton.Enabled = false;
+                else
+                    aoCalibrateButton.Enabled = true;
             }
             else
             {
@@ -56,6 +66,13 @@ namespace MeasurementComputing.DAQFlex.Test
 
                 aoResponseTextBox.Text = response.ToString();
 
+                double numericRepsonse = response.ToValue();
+
+                if (!Double.IsNaN(numericRepsonse))
+                    aoNumericResponseTextBox.Text = numericRepsonse.ToString();
+                else
+                    aoNumericResponseTextBox.Text = String.Empty;
+
                 statusLabel.Text = "Success";
             }
             catch (DaqException ex)
@@ -65,6 +82,18 @@ namespace MeasurementComputing.DAQFlex.Test
                 // be displayed by the status label
                 aoResponseTextBox.Text = String.Empty;
                 statusLabel.Text = ex.Message;
+            }
+        }
+
+        private void OnAoCalibrate(object sender, EventArgs e)
+        {
+            using (CalibrateAoForm caf = new CalibrateAoForm(m_daqDevice))
+            {
+#if WindowsCE
+                caf.ShowDialog();
+#else
+                caf.ShowDialog(this);
+#endif
             }
         }
     }

@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using MeasurementComputing.DAQFlex;
 using System.Windows.Forms;
+using System.Globalization;
+using MeasurementComputing.DAQFlex;
 
 namespace AInScanWithCallback
 {
@@ -28,7 +29,7 @@ namespace AInScanWithCallback
                 }
                 else
                 {
-                    DisableControls();
+                    EnableControls(false);
                     statusLabel.Text = "No devices detected!";
                 }
             }
@@ -64,9 +65,9 @@ namespace AInScanWithCallback
                 highChannelComboBox.SelectedIndex = 0;
 
                 // Get supported ranges
-                string ranges = Device.SendMessage("@AI:RANGES").ToString();
+                string ranges = Device.SendMessage("@AI{0}:RANGES").ToString();
                 ranges = ranges.Substring(ranges.IndexOf('%') + 1);
-                string[] rangeList = ranges.Split(new char[] { ',' });
+                string[] rangeList = ranges.Split(CultureInfo.CurrentCulture.TextInfo.ListSeparator.ToCharArray());
 
                 rangeComboBox.Items.Clear();
 
@@ -80,10 +81,13 @@ namespace AInScanWithCallback
 
                 samplesTextBox.Text = "1000";
                 rateTextBox.Text = "100";
+
+                EnableControls(true);
+                statusLabel.Text = String.Empty;
             }
             else
             {
-                DisableControls();
+                EnableControls(false);
                 statusLabel.Text = "The selected device does not support analog input scan!";
             }
         }
@@ -110,12 +114,12 @@ namespace AInScanWithCallback
                 string name = deviceComboBox.SelectedItem.ToString();
 
                 // Create a new device object
-                Cursor = Cursors.WaitCursor;
+                Cursor.Current = Cursors.WaitCursor;
                 Device = DaqDeviceManager.CreateDevice(name);
 
                 InitializeControls();
 
-                Cursor = Cursors.Default;
+                Cursor.Current = Cursors.Default;
             }
             catch (Exception ex)
             {
@@ -248,18 +252,18 @@ namespace AInScanWithCallback
                 samplesTextBox.Enabled = true;
         }
 
-        private void DisableControls()
+        private void EnableControls(bool enableState)
         {
-            lowChannelComboBox.Enabled = false;
-            highChannelComboBox.Enabled = false;
-            rateTextBox.Enabled = false;
-            rangeComboBox.Enabled = false;
-            samplesTextBox.Enabled = false;
-            startButton.Enabled = false;
-            stopButton.Enabled = false;
-            finiteRadioButton.Enabled = false;
-            callbackCountTextBox.Enabled = false;
-            continuousRadioButton.Enabled = false;
+            lowChannelComboBox.Enabled = enableState;
+            highChannelComboBox.Enabled = enableState;
+            rateTextBox.Enabled = enableState;
+            rangeComboBox.Enabled = enableState;
+            samplesTextBox.Enabled = enableState;
+            startButton.Enabled = enableState;
+            stopButton.Enabled = enableState;
+            finiteRadioButton.Enabled = enableState;
+            callbackCountTextBox.Enabled = enableState;
+            continuousRadioButton.Enabled = enableState;
         }
     }
 }

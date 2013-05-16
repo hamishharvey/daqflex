@@ -22,12 +22,15 @@ install:
 	cp -f ../../60-daqflex.rules /etc/udev/rules.d
 	cp -f ../../daqflex.sh /etc/profile.d
 	-install -d /usr/lib/daqflex
+	cp -f ../../*.rbf /usr/lib/daqflex
 	-install -c --mode=0755 bin/$(CFG)/DAQFlex.dll /usr/lib/daqflex
 	-install -c --mode=0755 ../../DAQFlex.dll.config /usr/lib/daqflex
+	-install -c --mode=0755 ../../DAQFlex.dll.config ../lib
 
 uninstall:
 	-rm -f /etc/udev/rules.d/60-daqflex.rules
 	-rm -f /usr/lib/daqflex/DAQFlex*
+	-rm -f /usr/lib/daqflex/*.rbf
 	-rmdir /usr/lib/daqflex
 	-rm -f /etc/profile.d/daqflex.sh
 	

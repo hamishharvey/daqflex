@@ -59,6 +59,7 @@ namespace AOutScan
             // 
             // highChannelComboBox
             // 
+            this.highChannelComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.highChannelComboBox.Location = new System.Drawing.Point(116, 85);
             this.highChannelComboBox.Name = "highChannelComboBox";
             this.highChannelComboBox.Size = new System.Drawing.Size(107, 21);
@@ -75,6 +76,7 @@ namespace AOutScan
             // 
             // rangeComboBox
             // 
+            this.rangeComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.rangeComboBox.Location = new System.Drawing.Point(300, 53);
             this.rangeComboBox.Name = "rangeComboBox";
             this.rangeComboBox.Size = new System.Drawing.Size(107, 21);
@@ -101,6 +103,7 @@ namespace AOutScan
             // 
             // lowChannelComboBox
             // 
+            this.lowChannelComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.lowChannelComboBox.Location = new System.Drawing.Point(116, 53);
             this.lowChannelComboBox.Name = "lowChannelComboBox";
             this.lowChannelComboBox.Size = new System.Drawing.Size(107, 21);
@@ -110,7 +113,7 @@ namespace AOutScan
             // 
             this.deviceComboBox.Location = new System.Drawing.Point(116, 14);
             this.deviceComboBox.Name = "deviceComboBox";
-            this.deviceComboBox.Size = new System.Drawing.Size(242, 21);
+            this.deviceComboBox.Size = new System.Drawing.Size(291, 21);
             this.deviceComboBox.TabIndex = 91;
             this.deviceComboBox.SelectedIndexChanged += new System.EventHandler(this.OnDeviceChanged);
             // 
@@ -121,7 +124,6 @@ namespace AOutScan
             this.continuousRadioButton.Size = new System.Drawing.Size(95, 17);
             this.continuousRadioButton.TabIndex = 90;
             this.continuousRadioButton.Text = "Continuous";
-            this.continuousRadioButton.CheckedChanged += new System.EventHandler(this.OnSampleModeChanged);
             // 
             // finiteRadioButton
             // 
@@ -132,7 +134,6 @@ namespace AOutScan
             this.finiteRadioButton.TabIndex = 89;
             this.finiteRadioButton.TabStop = true;
             this.finiteRadioButton.Text = "Finite";
-            this.finiteRadioButton.CheckedChanged += new System.EventHandler(this.OnSampleModeChanged);
             // 
             // label4
             // 

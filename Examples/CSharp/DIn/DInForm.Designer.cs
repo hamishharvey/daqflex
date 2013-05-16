@@ -190,6 +190,7 @@
             // 
             // portComboBox
             // 
+            this.portComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.portComboBox.Location = new System.Drawing.Point(80, 44);
             this.portComboBox.Name = "portComboBox";
             this.portComboBox.Size = new System.Drawing.Size(97, 21);
@@ -207,6 +208,7 @@
             // 
             // deviceComboBox
             // 
+            this.deviceComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.deviceComboBox.Location = new System.Drawing.Point(80, 10);
             this.deviceComboBox.Name = "deviceComboBox";
             this.deviceComboBox.Size = new System.Drawing.Size(242, 21);

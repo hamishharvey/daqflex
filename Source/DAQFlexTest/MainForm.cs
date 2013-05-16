@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
 using MeasurementComputing.DAQFlex;
+using System.Reflection;
 
 namespace MeasurementComputing.DAQFlex.Test
 {
@@ -25,6 +26,11 @@ namespace MeasurementComputing.DAQFlex.Test
         public MainForm()
         {
             InitializeComponent();
+
+            AssemblyName assemblyName = System.Reflection.Assembly.GetExecutingAssembly().GetName();
+            Version v = assemblyName.Version;
+
+            Text = String.Format("{0} - {1}.{2}", assemblyName.Name, v.Major, v.Minor);
 
             m_messageLog = new MessageLog();
         }
@@ -99,22 +105,22 @@ namespace MeasurementComputing.DAQFlex.Test
                 if (m_previouslySelectedDevice != null)
                     DaqDeviceManager.ReleaseDevice(m_previouslySelectedDevice);
 
-                Cursor savedCursor = Cursors.Arrow;
                 this.Cursor = Cursors.WaitCursor;
 
                 m_daqDevice = DaqDeviceManager.CreateDevice(m_deviceName);
-                m_daqDevice.SendMessage("DEV:RESET/DEFAULT");
 
                 m_previouslySelectedDevice = m_daqDevice;
 
                 // initialize the message combo boxes
                 AddPages();
-
-                this.Cursor = savedCursor;
             }
             catch (DaqException ex)
             {
                 statusLabel.Text = ex.Message;
+            }
+            finally
+            {
+                this.Cursor = Cursors.Default;
             }
         }
 
@@ -172,6 +178,13 @@ namespace MeasurementComputing.DAQFlex.Test
             {
                 testTabControl.TabPages.Add(m_tabPages["CTR"]);
                 InitializeCtrMessageComboBox(commands);
+            }
+
+            commands = m_daqDevice.GetSupportedMessages("TMR");
+            if (commands != null && commands.Count > 0)
+            {
+                testTabControl.TabPages.Add(m_tabPages["TMR"]);
+                InitializeTmrMessageComboBox(commands);
             }
         }
 
@@ -233,14 +246,6 @@ namespace MeasurementComputing.DAQFlex.Test
             // set initial values of controls
             deviceListComboBox.SelectedIndex = 0;
 
-            aiTextRadioButton.Checked = true;
-            aiTextRadioButton.Enabled = false;
-            aiNumericRadioButton.Enabled = false;
-
-            dioTextRadioButton.Checked = true;
-            dioTextRadioButton.Enabled = false;
-            dioNumericRadioButton.Enabled = false;
-
             messageLogCheckBox.Checked = true;
         }
 
@@ -278,11 +283,5 @@ namespace MeasurementComputing.DAQFlex.Test
 
             return channel;
         }
-
-        private void MainForm_Load(object sender, EventArgs e)
-        {
-
-        }
-
     }
 }

@@ -66,8 +66,41 @@ namespace MeasurementComputing.DAQFlex
 
         #endregion
 
-        // #region version 2.1.0.0 
-        // #endregion
+        #region version 2.2.0.0 
+        internal const string BASEFREQ = "BASEFREQ";
+        internal const string DUTYCYCLE = "DUTYCYCLE";
+        internal const string DELAY = "DELAY";
+        internal const string BURSTMODE = "BURSTMODE";
+        internal const string CLKSRC = "CLKSRC";
+        internal const string VALIDCHANS = "VALIDCHANS";
+        internal const string LATCH = "LATCH";
+        internal const string LDMIN = "LDMIN";
+        internal const string LDMAX = "LDMAX";
+        internal const string DATARATES = "DATARATES";
+        internal const string QUEUECONFIG = "QUEUECONFIG";
+        internal const string ADCAL = "ADCAL";
+        internal const string XFRSIZE = "XFRSIZE";
+        //internal const string BINOUT = "BINOUT";
+        internal const string RES = "RES";
+        internal const string AVG = "AVG";
+        internal const string SETLTIME = "SETLTIME";
+
+        #endregion
+
+        #region version 3.0.0.0
+        internal const string REG = "REG";
+        internal const string UPDATE = "UPDATE";
+        #endregion
+
+        #region version 3.1.0.0
+        internal const string FILTER = "FILTER";
+        internal const string FILTTIME = "FILTTIME";
+        internal const string FILTERMAX = "FILTERMAX";
+        internal const string FILTTIMEMIN = "FILTTIMEMIN";
+        internal const string FILTTIMEMAX = "FILTTIMEMAX";
+        internal const string PKTSIZE = "PKTSIZE";
+        internal const string SIOTHRSHLD = "SIOTHRSHLD";
+        #endregion
     }
 
     internal class DevCapConfigurations
@@ -78,10 +111,12 @@ namespace MeasurementComputing.DAQFlex
         internal const string ALL = "ALL";
         internal const string SE = "SE";
         internal const string DIFF = "DIFF";
+        internal const string TCOTD = "TC/OTD";
+        internal const string TCNOOTD = "TC/NOOTD";
 
         #endregion
 
-        // #region version 2.1.0.0 
+        // #region version 2.2.0.0 
         // #endregion
     }
 
@@ -98,8 +133,12 @@ namespace MeasurementComputing.DAQFlex
 
         #endregion
 
-        // #region version 2.1.0.0 
+        // #region version 2.2.0.0 
         // #endregion
+
+        #region version 3.0.0.0 
+        internal const string AUTO = "AUTO";
+        #endregion
     }
 
     internal class DevCapTypes
@@ -112,7 +151,7 @@ namespace MeasurementComputing.DAQFlex
 
         #endregion
 
-        // #region version 2.1.0.0 
+        // #region version 2.2.0.0 
         // #endregion
     }
 
@@ -131,21 +170,21 @@ namespace MeasurementComputing.DAQFlex
         internal const string BIP2V = "BIP2V";
         internal const string BIP1PT25V = "BIP1.25V";
         internal const string BIP1V = "BIP1V";
-        internal const string BIPPT625V = "BIP0.625V";
-        internal const string BIPPT5V = "BIP0.5V";
-        internal const string BIPPT25V = "BIP0.25V";
-        internal const string BIPPT2V = "BIP0.2V";
-        internal const string BIPPT1V = "BIP0.1V";
-        internal const string BIPPT05V = "BIP0.05V";
-        internal const string BIPPT01V = "BIP0.01V";
-        internal const string BIPPT005V = "BIP5E-3V";
+        internal const string BIPPT625V = "BIP625.0E-3V";
+        internal const string BIPPT5V = "BIP500.0E-3V";
+        internal const string BIPPT25V = "BIP250.0E-3V";
+        internal const string BIPPT2V = "BIP200.0E-3V";
+        internal const string BIPPT1V = "BIP100.0E-3V";
+        internal const string BIPPT05V = "BIP50.0E-3V";
+        internal const string BIPPT01V = "BIP10.0E-3V";
+        internal const string BIPPT005V = "BIP5.0E-3V";
         internal const string BIP1PT67V = "BIP1.67V";
-        internal const string BIPPT312V = "BIP0.312V";
-        internal const string BIPPT156V = "BIP0.156V";
-        internal const string BIPPT078V = "BIP0.078V";
+        internal const string BIPPT3125V = "BIP312.5E-3V";
+        internal const string BIPPT15625V = "BIP156.25E-3V";
+        internal const string BIPPT078125V = "BIP78.125E-3V";
         internal const string BIP60V = "BIP60V";
         internal const string BIP15V = "BIP15V";
-        internal const string BIPPT125V = "BIP0.125V";
+        internal const string BIPPT125V = "BIP125.0E-3V";
         internal const string UNI10V = "UNI10V";
         internal const string UNI5V = "UNI5V";
         internal const string UNI4PT096V = "UNI4.096V";
@@ -153,13 +192,13 @@ namespace MeasurementComputing.DAQFlex
         internal const string UNI2V = "UNI2V";
         internal const string UNI1PT25V = "UNI1.25V";
         internal const string UNI1V = "UNI1V";
-        internal const string UNIPT5V = "UNI0.5V";
-        internal const string UNIPT25V = "UNI0.25V";
-        internal const string UNIPT2V = "UNI0.2V";
-        internal const string UNIPT1V = "UNI0.1V";
-        internal const string UNIPT05V = "UNI0.05V";
-        internal const string UNIPT01V = "UNI0.01V";
-        internal const string UNIPT02V = "UNI0.02V";
+        internal const string UNIPT5V = "UNI500.0E-3V";
+        internal const string UNIPT25V = "UNI250.0E-3V";
+        internal const string UNIPT2V = "UNI200.0E-3V";
+        internal const string UNIPT1V = "UNI100.0E-3V";
+        internal const string UNIPT05V = "UNI50.0E-3V";
+        internal const string UNIPT01V = "UNI10.0E-3V";
+        internal const string UNIPT02V = "UNI20.0E-3V";
         internal const string UNI1PT67V = "UNI1.67V";
         internal const string MA4TO20 = "4TO20MA";
         internal const string MA2TO10 = "2TO10MA ";
@@ -192,17 +231,12 @@ namespace MeasurementComputing.DAQFlex
         internal const string BITIN = "BITIN";
         internal const string BITOUT = "BITOUT";
         internal const string EVENT = "EVENT";
-// 6/18/2010:
         internal const string DUPLICATE = "DUPLICATE";
         internal const string SEQUENTIAL = "SEQUENTIAL";
         internal const string NONSEQUENTIAL = "NONSEQUENTIAL";
-
-        internal const string BIPPT073125 = "BIP73.125E-3V";
-        internal const string BIPPT14625 = "BIP146.25E-3V";
-
+        internal const string BIPPT073125V = "BIP73.125E-3V";
+        internal const string BIPPT14625V = "BIP146.25E-3V";
         internal const string TC = "TC";
-
-        // TC types
         internal const string B = "B";
         internal const string E = "E";
         internal const string J = "J";
@@ -211,7 +245,6 @@ namespace MeasurementComputing.DAQFlex
         internal const string R = "R";
         internal const string S = "S";
         internal const string T = "T";
-
         internal const string ENABLE = "ENABLE";
         internal const string DISABLE = "DISABLE";
         internal const string RISING = "RISING";
@@ -219,8 +252,71 @@ namespace MeasurementComputing.DAQFlex
 
         #endregion
         
-        // #region version 2.1.0.0 
-        // #endregion
+        #region version 2.2.0.0 
+        internal const string PULSE = "PULSE";
+        internal const string PULSES = "PULSES";
+        internal const string PRCNTHIGH = "PRCNTHIGH";
+        internal const string LEVELHIGH = "LEVEL/HIGH";
+        internal const string LEVELLOW = "LEVEL/LOW";
+        internal const string READ = "READ";
+        internal const string WRITE = "WRITE";
+        internal const string MIXED = "MIXED";
+        internal const string DR3750 = "3750";
+        internal const string DR2000 = "2000";
+        internal const string DR1000 = "1000";
+        internal const string DR500 = "500";
+        internal const string DR100 = "100";
+        internal const string DR60 = "60";
+        internal const string DR50 = "50";
+        internal const string DR25 = "25";
+        internal const string DR10 = "10";
+        internal const string DR5 = "5";
+        internal const string DR2PT5 = "2.5";
+        internal const string CHMODE = "CHMODE";
+        internal const string CHAN = "CHAN";
+        internal const string RANGE = "RANGE";
+        internal const string DATARATE = "DATARATE";
+        internal const string TCOTD = "TC/OTD";
+        internal const string TCNOOTD = "TC/NOOTD";
+        internal const string SIGNED = "SIGNED";
+        internal const string UNSIGNED = "UNSIGNED";
+        internal const string U12 = "U12";
+        internal const string S24 = "S24";
+        internal const string AVG0 = "0";
+        internal const string AVG2 = "2";
+        internal const string AVG4 = "4";
+        internal const string AVG8 = "8";
+        internal const string AVG16 = "16";
+        internal const string AVG32 = "32";
+        internal const string AVG64 = "64";
+        internal const string STLTM1 = "1";
+        internal const string STLTM2 = "2";
+        internal const string STLTM4 = "4";
+        internal const string STLTM8 = "8";
+        internal const string HWSTARTDIG = "HWSTART/DIG";
+        internal const string HWSTARTANLG = "HWSTART/ANLG";
+        internal const string SWSTARTAI = "SWSTART/AI";
+        internal const string SWSTARTDIO = "SWSTART/DIO";
+        internal const string SWSTARTCTR = "SWSTART/CTR";
+        internal const string HWSTOPDIG = "HWSTOP/DIG";
+        internal const string HWSOPTANLG = "HWSTOP/ANLG";
+        internal const string SWSTOPAI = "SWSTOP/AI";
+        internal const string SWSTOPDIO = "SWSTOP/DIO";
+        internal const string SWSTOPCTR = "SWSTOP/CTR";
+        internal const string U16 = "U16";
+        #endregion
+
+        #region version 3.1.0.0
+        internal const string DR30 = "30";
+        internal const string DR15 = "15";
+        #endregion
+
+        #region version 3.2.0.0
+        internal const string U14 = "U14";
+        internal const string ASCENDING = "ASCENDING";
+        internal const string ADJACENT = "ADJACENT";
+        internal const string ANYORDER = "ANYORDER";
+        #endregion
     }                         
 
     //======================================================================================================
@@ -507,9 +603,11 @@ namespace MeasurementComputing.DAQFlex
 
         internal void BuildConfigurationReflectionCodes()
         {
-            m_configReflectionCodes.Add(0, "ALL");
-            m_configReflectionCodes.Add(1, "SE");
-            m_configReflectionCodes.Add(2, "DIFF");
+            m_configReflectionCodes.Add(0, DevCapConfigurations.ALL);
+            m_configReflectionCodes.Add(1, DevCapConfigurations.SE);
+            m_configReflectionCodes.Add(2, DevCapConfigurations.DIFF);
+            m_configReflectionCodes.Add(3, DevCapConfigurations.TCOTD);
+            m_configReflectionCodes.Add(4, DevCapConfigurations.TCNOOTD);
         }
 
         internal void BuildValueTypeReflectionCodes()
@@ -630,11 +728,15 @@ namespace MeasurementComputing.DAQFlex
 
             try
             {
+#pragma warning disable 219
+
+                int bytesDecompressed;
+
                 using (GZipStream gzStream = new GZipStream(ms, CompressionMode.Decompress))
                 {
                     byte[] sizeBuffer = new byte[4];
                     ms.Position = (int)ms.Length - 4;
-                    ms.Read(sizeBuffer, 0, 4);
+                    bytesDecompressed = ms.Read(sizeBuffer, 0, 4);
 
                     int uncompressedLength = BitConverter.ToInt32(sizeBuffer, 0);
 
@@ -642,9 +744,9 @@ namespace MeasurementComputing.DAQFlex
 
                     uncompressedImage = new byte[uncompressedLength];
 
-                    gzStream.Read(uncompressedImage, 0, uncompressedLength);
+                    bytesDecompressed = gzStream.Read(uncompressedImage, 0, uncompressedLength);
                 }
-
+#pragma warning restore 219
             }
             catch (Exception)
             {

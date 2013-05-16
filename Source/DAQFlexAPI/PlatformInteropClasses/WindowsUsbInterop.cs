@@ -60,7 +60,7 @@ namespace MeasurementComputing.DAQFlex
 
     internal class WindowsUsbInterop : UsbPlatformInterop
     {
-        protected List<String> m_debugList = new List<string>();
+        //protected WindowsUsbSetupPacket m_aiScanStatusMessagePacket = new WindowsUsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
 
         internal WindowsUsbInterop()
         {
@@ -69,16 +69,23 @@ namespace MeasurementComputing.DAQFlex
         internal WindowsUsbInterop(DeviceInfo deviceInfo, CriticalParams criticalParams)
             : base(deviceInfo, criticalParams)
         {
+            //m_aiScanResetPacket.TransferType = UsbTransferTypes.ControlOut;
+            //m_aiScanResetPacket.Request = 0x80;
+            //m_aiScanResetPacket.DeferTransfer = false;
+            //m_aiScanResetPacket.BytesTransfered = 0;
+
+            //for (int i = 0; i < m_aiScanResetPacket.Length; i++)
+            //    m_aiScanResetPacket.Buffer[i] = m_aiScanStatusMessage[i];
         }
 
-        //=====================================================================================================
+        //=========================================================================================================================
         /// <summary>
         /// Virtual method for getting a list of DeviceInfos
         /// </summary>
         /// <param name="deviceInfoList">The list of devices</param>
         /// <param name="deviceInfoList">A flag indicating if the device list should be refreshed</param>
-        //=====================================================================================================
-        internal override ErrorCodes GetUsbDevices(Dictionary<int, DeviceInfo> deviceInfoList, bool refresh)
+        //=========================================================================================================================
+        internal override ErrorCodes GetUsbDevices(Dictionary<int, DeviceInfo> deviceInfoList, DeviceListUsage deviceListUsage)
         {
             System.Diagnostics.Debug.Assert(false, "GetUsbDevices must be implemented in a derived class");
             return ErrorCodes.MethodRequiresImplementation;
@@ -89,31 +96,31 @@ namespace MeasurementComputing.DAQFlex
             throw new NotImplementedException();
         }
 
-        //==================================================================
+        //=============================================================================================================
         /// <summary>
         /// Virtual method for a USB control IN request
         /// </summary>
         /// <returns>The result</returns>
-        //==================================================================
+        //=============================================================================================================
         internal override ErrorCodes UsbControlInRequest(UsbSetupPacket packet)
         {
             System.Diagnostics.Debug.Assert(false, "UsbControlInRequest must be implemented in a derived class");
             return ErrorCodes.MethodRequiresImplementation;
         }
 
-        //==================================================================
+        //=============================================================================================================
         /// <summary>
         /// Virtual method for a USB control OUT request
         /// </summary>
         /// <returns>The result</returns>
-        //==================================================================
+        //=============================================================================================================
         internal override ErrorCodes UsbControlOutRequest(UsbSetupPacket packet)
         {
             System.Diagnostics.Debug.Assert(false, "UsbControlOutRequest must be implemented in a derived class");
             return ErrorCodes.MethodRequiresImplementation;
         }
 
-        //==============================================================================================
+        //=============================================================================================================
         /// <summary>
         /// Virtual method for a USB Bulk IN request
         /// </summary>
@@ -121,7 +128,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="bytesRequested">The number of bytes to requested</param>
         /// <param name="bytesReceived">The number of actual bytes received</param>
         /// <returns>The result</returns>
-        //==============================================================================================
+        //=============================================================================================================
         internal override ErrorCodes UsbBulkInRequest(ref BulkInBuffer buffer, ref uint bytesReceived)
         {
             System.Diagnostics.Debug.Assert(false, "UsbBulkInRequest must be implemented in a derived class");
@@ -130,33 +137,31 @@ namespace MeasurementComputing.DAQFlex
             return ErrorCodes.MethodRequiresImplementation;
         }
 
-        //===========================================================================================
+        //=============================================================================================================
         /// <summary>
         /// Overriden for bulk out request
         /// </summary>
         /// <param name="buffer">The buffer containing the data to send</param>
         /// <param name="count">The number of samples to send</param>
         /// <returns>The result</returns>
-        //===========================================================================================
+        //=============================================================================================================
         internal override int UsbBulkOutRequest(UsbBulkOutRequest br, ref int bytesTransferred)
         {
             System.Diagnostics.Debug.Assert(false, "UsbControlOutRequest must be implemented in a derived class");
             return 0;
         }
     
-        //===========================================================================================
+        //=============================================================================================================
         /// <summary>
         /// Sets up parameters for bulk in transfers
         /// </summary>
         /// <param name="scanRate">The device scan rate</param>
         /// <param name="totalNumberOfBytes">The total number of bytes to transfer</param>
         /// <param name="transferSize">The number of bytes in each transfer request</param>
-        //===========================================================================================
+        //=============================================================================================================
         internal override void PrepareInputTransfers(double scanRate, int totalNumberOfBytes, int transferSize)
         {
             m_errorCode = ErrorCodes.NoErrors;
-
-            m_debugList.Clear();
 
             m_totalNumberOfInputBytesRequested = totalNumberOfBytes;
 
@@ -166,8 +171,8 @@ namespace MeasurementComputing.DAQFlex
             {
                 m_numberOfWorkingInputRequests = Math.Min(8, Math.Max(1, totalNumberOfBytes / transferSize));
 
-                if (m_criticalParams.InputScanRate >= 10000 && m_numberOfWorkingInputRequests < 4)
-                    m_numberOfWorkingInputRequests = 4;
+                //if (m_criticalParams.InputScanRate >= 10000 && m_numberOfWorkingInputRequests < 4)
+                //    m_numberOfWorkingInputRequests = 4;
 
                 m_numberOfQueuedInputRequests = Math.Max(1, m_numberOfWorkingInputRequests / 2);
             }
@@ -180,9 +185,9 @@ namespace MeasurementComputing.DAQFlex
             if (m_criticalParams.InputTransferMode == TransferMode.SingleIO)
             {
                 int aiChannelCount = m_criticalParams.AiChannelCount;
-                int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
+                int byteRatio = m_criticalParams.DataInXferSize;
 
-                m_totalNumberOfInputRequests = totalNumberOfBytes / (byteRatio * aiChannelCount);
+                m_totalNumberOfInputRequests = totalNumberOfBytes / (byteRatio * m_criticalParams.NumberOfSamplesForSingleIO);
             }
             else
             {
@@ -193,8 +198,9 @@ namespace MeasurementComputing.DAQFlex
             }
 
             // the device will send a zero-length packet after the last data packet if
-            // the number of bytes is a multiple of the packet size so add an extra request
-            if ((totalNumberOfBytes % transferSize == 0) || m_criticalParams.InputTransferMode == TransferMode.SingleIO)
+            // the number of bytes is a multiple of the packet size so add an extra request (or is it the transfer size)
+            if ((totalNumberOfBytes % m_criticalParams.InputPacketSize == 0) || 
+                (m_criticalParams.InputTransferMode == TransferMode.SingleIO && m_criticalParams.Requires0LengthPacketForSingleIO))
             {
                 m_totalNumberOfInputRequests++;
 
@@ -221,8 +227,8 @@ namespace MeasurementComputing.DAQFlex
                 new WeakReference(buffer, false);
                 buffer = null;
             }
-
-            GC.Collect();
+            
+            //GC.Collect();
 
             for (int i = 0; i < numberOfBulkInCopyBuffers; i++)
             {
@@ -239,40 +245,43 @@ namespace MeasurementComputing.DAQFlex
             QueueBulkInRequests(scanRate);
         }
 
-        //===========================================================================================
+        //============================================================================================================
         /// <summary>
         /// Sets up parameters for bulk in transfers
         /// </summary>
         /// <param name="scanRate">The device scan rate</param>
         /// <param name="totalNumberOfBytes">The total number of bytes to transfer</param>
         /// <param name="transferSize">The number of bytes in each transfer request</param>
-        //===========================================================================================
+        //============================================================================================================
         internal override void PrepareOutputTransfers(double scanRate, int totalNumberOfBytes, int transferSize)
         {
             m_errorCode = ErrorCodes.NoErrors;
 
-            m_debugList.Clear();
-
-            
             m_totalBytesReceivedByDevice = 0;
             m_driverInterfaceOutputBufferIndex = 0;
             m_totalNumberOfOutputBytesRequested = totalNumberOfBytes;
 
-            if (totalNumberOfBytes >= m_criticalParams.OutputFifoSize)
+            if (m_criticalParams.OutputSampleMode == SampleMode.Continuous)
             {
-                m_numberOfWorkingOutputRequests = Math.Max(4, (int)Math.Ceiling((double)m_criticalParams.OutputFifoSize / (double)transferSize));
-                m_numberOfQueuedOutputRequests = m_numberOfWorkingOutputRequests;
-            }
-            else
-            {
-                m_numberOfWorkingOutputRequests = (int)Math.Ceiling((double)totalNumberOfBytes / (double)transferSize);
-                m_numberOfQueuedOutputRequests = m_numberOfWorkingOutputRequests;
-            }
+                m_numberOfQueuedOutputRequests = 4;
+                m_numberOfWorkingOutputRequests = 8;
 
-            if (totalNumberOfBytes <= transferSize)
+                // for continuous mode this just has to be greater than m_numberOfQueuedOutputRequests
+                m_totalNumberOfOutputRequests = 8; 
+            }
+            else if (totalNumberOfBytes <= transferSize)
+            {
                 m_totalNumberOfOutputRequests = 1;
+                m_numberOfWorkingOutputRequests = 1;
+                m_numberOfQueuedOutputRequests = 1;
+            }
             else
+            {
                 m_totalNumberOfOutputRequests = (int)Math.Ceiling((double)totalNumberOfBytes / (double)transferSize);
+                m_numberOfQueuedOutputRequests = Math.Min(4, m_totalNumberOfOutputRequests / 4);
+                m_numberOfQueuedOutputRequests = Math.Max(1, m_numberOfQueuedOutputRequests);
+                m_numberOfWorkingOutputRequests = Math.Min(8, m_totalNumberOfOutputRequests / 2); 
+            }
 
             m_stopOutputTransfers = false;
 

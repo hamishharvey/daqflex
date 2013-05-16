@@ -133,6 +133,7 @@
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.Name = "TempViewForm";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "TempView";
             ((System.ComponentModel.ISupportInitialize)(this.dataGraph)).EndInit();
             this.ResumeLayout(false);

@@ -25,6 +25,7 @@ namespace MeasurementComputing.DAQFlex
         protected const byte MEM_ADDR = 0x31;
         protected const byte MEM_READ = 0x30;
         protected const byte MEM_WRITE = 0x30;
+        protected const byte MEM_OFFSET_LENGTH = 2;
 
         protected WindowsUsbSetupPacket m_statusPacket;
         protected Queue<BulkInBuffer> m_bulkInReadyBuffers = new Queue<BulkInBuffer>();
@@ -32,15 +33,20 @@ namespace MeasurementComputing.DAQFlex
         protected object m_bulkInReadyBuffersLock = new Object();
         protected object m_bulkInCompletedBuffersLock = new Object();
         protected List<UsbBulkInRequest> m_bulkInRequests = new List<UsbBulkInRequest>();
+        protected List<UsbBulkOutRequest> m_bulkOutRequests = new List<UsbBulkOutRequest>();
         protected object m_bulkInRequestLock = new object();
         protected object m_bulkOutRequestLock = new object();
         protected Queue<byte[]> m_completedBulkInRequestBuffers = new Queue<byte[]>();
+
+        // MBD messages
         protected byte[] m_devIdMessage = new byte[Constants.MAX_MESSAGE_LENGTH];
         protected byte[] m_sernoMessage = new byte[Constants.MAX_MESSAGE_LENGTH];
+        protected byte[] m_aiScanStatusMessage = new byte[Constants.MAX_MESSAGE_LENGTH];
+        protected byte[] m_aoScanStatusMessage = new byte[Constants.MAX_MESSAGE_LENGTH];
+
         protected UsbSetupPacket m_aiScanResetPacket = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
         protected UsbSetupPacket m_aoScanResetPacket = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
-        protected List<UsbBulkOutRequest> m_bulkOutRequests = new List<UsbBulkOutRequest>();
-
+        
         protected int m_numberOfWorkingInputRequests = 0;
         protected int m_numberOfQueuedInputRequests = 0;
         protected int m_totalNumberOfInputRequests = 0;
@@ -61,67 +67,57 @@ namespace MeasurementComputing.DAQFlex
         internal UsbPlatformInterop()
             : base()
         {
-            // build device ID and serno messages
-            m_devIdMessage[0] = (byte)'?';
-            m_devIdMessage[1] = (byte)'D';
-            m_devIdMessage[2] = (byte)'E';
-            m_devIdMessage[3] = (byte)'V';
-            m_devIdMessage[4] = (byte)':';
-            m_devIdMessage[5] = (byte)'I';
-            m_devIdMessage[6] = (byte)'D';
+            string msg;
 
-            m_sernoMessage[0] = (byte)'?';
-            m_sernoMessage[1] = (byte)'D';
-            m_sernoMessage[2] = (byte)'E';
-            m_sernoMessage[3] = (byte)'V';
-            m_sernoMessage[4] = (byte)':';
-            m_sernoMessage[5] = (byte)'M';
-            m_sernoMessage[6] = (byte)'F';
-            m_sernoMessage[7] = (byte)'G';
-            m_sernoMessage[8] = (byte)'S';
-            m_sernoMessage[9] = (byte)'E';
-            m_sernoMessage[10] = (byte)'R';
+            // create a device ID message
+            msg = Messages.DEV_ID_QUERY;
+
+            for (int i = 0; i < msg.Length; i++)
+                m_devIdMessage[i] = (byte)msg[i];
+
+            // create a mfg serno message
+            msg = Messages.DEV_SERNO_QUERY;
+
+            for (int i = 0; i < msg.Length; i++)
+                m_sernoMessage[i] = (byte)msg[i];
         }
 
         internal UsbPlatformInterop(DeviceInfo deviceInfo, CriticalParams criticalParams)
             : base(deviceInfo, criticalParams)
         {
-            // build device ID and serno messages
-            m_devIdMessage[0] = (byte)'?';
-            m_devIdMessage[1] = (byte)'D';
-            m_devIdMessage[2] = (byte)'E';
-            m_devIdMessage[3] = (byte)'V';
-            m_devIdMessage[4] = (byte)':';
-            m_devIdMessage[5] = (byte)'I';
-            m_devIdMessage[6] = (byte)'D';
+            string msg;
 
-            m_sernoMessage[0] = (byte)'?';
-            m_sernoMessage[1] = (byte)'D';
-            m_sernoMessage[2] = (byte)'E';
-            m_sernoMessage[3] = (byte)'V';
-            m_sernoMessage[4] = (byte)':';
-            m_sernoMessage[5] = (byte)'M';
-            m_sernoMessage[6] = (byte)'F';
-            m_sernoMessage[7] = (byte)'G';
-            m_sernoMessage[8] = (byte)'S';
-            m_sernoMessage[9] = (byte)'E';
-            m_sernoMessage[10] = (byte)'R';
+            // create a device ID message
+            msg = Messages.DEV_ID_QUERY;
 
-            // build Ai scan reset message
+            for (int i = 0; i < msg.Length; i++)
+                m_devIdMessage[i] = (byte)msg[i];
+
+            // create a mfg serno message
+            msg = Messages.DEV_SERNO_QUERY;
+
+            for (int i = 0; i < msg.Length; i++)
+                m_sernoMessage[i] = (byte)msg[i];
+
+            // create an aiscan status message
+            msg = Messages.AISCAN_STATUS_QUERY;
+
+            for (int i = 0; i < msg.Length; i++)
+                m_aiScanStatusMessage[i] = (byte)msg[i];
+
+            // create an aoscan status message
+            msg = Messages.AOSCAN_STATUS_QUERY;
+
+            for (int i = 0; i < msg.Length; i++)
+                m_aoScanStatusMessage[i] = (byte)msg[i];
+
+            // build an ai scan reset packet
             byte[] aiScanResetCmd = new byte[Constants.MAX_MESSAGE_LENGTH];
 
-            aiScanResetCmd[0] = 65;
-            aiScanResetCmd[1] = 73;
-            aiScanResetCmd[2] = 83;
-            aiScanResetCmd[3] = 67;
-            aiScanResetCmd[4] = 65;
-            aiScanResetCmd[5] = 78;
-            aiScanResetCmd[6] = 58;
-            aiScanResetCmd[7] = 82;
-            aiScanResetCmd[8] = 69;
-            aiScanResetCmd[9] = 83;
-            aiScanResetCmd[10] = 69;
-            aiScanResetCmd[11] = 84;
+            msg = Messages.AISCAN_RESET;
+
+            for (int i = 0; i < msg.Length; i++)
+                aiScanResetCmd[i] = (byte)msg[i];
 
             m_aiScanResetPacket.TransferType = UsbTransferTypes.ControlOut;
             m_aiScanResetPacket.Request = 0x80;
@@ -131,21 +127,13 @@ namespace MeasurementComputing.DAQFlex
             for (int i = 0; i < aiScanResetCmd.Length; i++)
                 m_aiScanResetPacket.Buffer[i] = aiScanResetCmd[i];
 
-            // build Ai scan reset message
+            // build an ao scan reset packet
             byte[] aoScanResetCmd = new byte[Constants.MAX_MESSAGE_LENGTH];
 
-            aoScanResetCmd[0] = (byte)'A';
-            aoScanResetCmd[1] = (byte)'O';
-            aoScanResetCmd[2] = (byte)'S';
-            aoScanResetCmd[3] = (byte)'C';
-            aoScanResetCmd[4] = (byte)'A';
-            aoScanResetCmd[5] = (byte)'N';
-            aoScanResetCmd[6] = (byte)':';
-            aoScanResetCmd[7] = (byte)'R';
-            aoScanResetCmd[8] = (byte)'E';
-            aoScanResetCmd[9] = (byte)'S';
-            aoScanResetCmd[10] = (byte)'E';
-            aoScanResetCmd[11] = (byte)'T';
+            msg = Messages.AOSCAN_RESET;
+
+            for (int i = 0; i < msg.Length; i++)
+                aoScanResetCmd[i] = (byte)msg[i];
 
             m_aoScanResetPacket.TransferType = UsbTransferTypes.ControlOut;
             m_aoScanResetPacket.Request = 0x80;
@@ -155,6 +143,36 @@ namespace MeasurementComputing.DAQFlex
             for (int i = 0; i < aoScanResetCmd.Length; i++)
                 m_aoScanResetPacket.Buffer[i] = aoScanResetCmd[i];
 
+        }
+
+        //===================================================================================================
+        /// <summary>
+        /// Indicates if all input requests that were submitted have completed
+        /// </summary>
+        /// <returns>true if the number of requests completed equals the number
+        /// of requests submitted, otherwise false</returns>
+        //===================================================================================================
+        internal virtual bool InputScanComplete()
+        {
+            if (m_numberOfInputRequestsCompleted == m_numberOfInputRequestsSubmitted)
+                return true;
+            else
+                return false;
+        }
+
+        //===================================================================================================
+        /// <summary>
+        /// Indicates if all output requests that were submitted have completed
+        /// </summary>
+        /// <returns>true if the number of requests completed equals the number
+        /// of requests submitted, otherwise false</returns>
+        //===================================================================================================
+        internal bool OutputScanComplete()
+        {
+            if (m_numberOfOutputRequestsCompleted == m_numberOfOutputRequestsSubmitted)
+                return true;
+            else
+                return false;
         }
 
         //===================================================================================================
@@ -179,26 +197,26 @@ namespace MeasurementComputing.DAQFlex
 			set {m_readyToSubmitRemainingOutputTransfers = value;}
 		}
 		
-        //===================================================================================================
+        //==================================================================================================================
         /// <summary>
         /// Virtual method for getting a list of DeviceInfos
         /// </summary>
         /// <param name="deviceInfoList">The list of devices</param>
         /// <param name="deviceInfoList">A flag indicating if the device list should be refreshed</param>
-        //===================================================================================================
-        internal override ErrorCodes GetDevices(Dictionary<int, DeviceInfo> deviceInfoList, bool refresh)
+        //==================================================================================================================
+        internal override ErrorCodes GetDevices(Dictionary<int, DeviceInfo> deviceInfoList, DeviceListUsage deviceListUsage)
         {
-            return GetUsbDevices(deviceInfoList, refresh);
+            return GetUsbDevices(deviceInfoList, deviceListUsage);
         }
 
-        //===================================================================================================
+        //==================================================================================================================
         /// <summary>
         /// Virtual method for getting a list of DeviceInfos
         /// </summary>
         /// <param name="deviceInfoList">The list of devices</param>
         /// <param name="deviceInfoList">A flag indicating if the device list should be refreshed</param>
-        //===================================================================================================
-        internal abstract ErrorCodes GetUsbDevices(Dictionary<int, DeviceInfo> deviceInfoList, bool refresh);
+        //==================================================================================================================
+        internal abstract ErrorCodes GetUsbDevices(Dictionary<int, DeviceInfo> deviceInfoList, DeviceListUsage deviceListUsage);
 
         //===================================================================================================
         /// <summary>
@@ -287,6 +305,82 @@ namespace MeasurementComputing.DAQFlex
             return false;
         }
 
+        //==================================================================
+        /// <summary>
+        /// Check's the device status for a data overrun
+        /// </summary>
+        /// <returns>The error code</returns>
+        //==================================================================
+        internal override ErrorCodes CheckOverrun()
+        {
+            ErrorCodes errorCode = m_errorCode;
+
+            ControlTransferMutex.WaitOne();
+
+            UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
+            packet.TransferType = UsbTransferTypes.ControlOut;
+            packet.Request = ControlRequest.MESSAGE_REQUEST;
+            packet.Index = 0;
+            packet.Value = 0;
+            packet.Length = (ushort)m_aiScanStatusMessage.Length;
+            Array.Copy(m_aiScanStatusMessage, packet.Buffer, m_aiScanStatusMessage.Length);
+
+            // send the status message
+            UsbControlOutRequest(packet);
+
+            // get the status response
+            packet.TransferType = UsbTransferTypes.ControlIn;
+
+            UsbControlInRequest(packet);
+
+            ControlTransferMutex.ReleaseMutex();
+
+            string response = m_ae.GetString(packet.Buffer, 0, packet.Buffer.Length);
+
+            if (response.Contains(PropertyValues.OVERRUN))
+                errorCode = ErrorCodes.DataOverrun;
+
+            return errorCode;
+        }
+
+        //==================================================================
+        /// <summary>
+        /// Check's the device status for a data overrun
+        /// </summary>
+        /// <returns>The error code</returns>
+        //==================================================================
+        internal override ErrorCodes CheckUnderrun()
+        {
+            ErrorCodes errorCode = m_errorCode;
+
+            ControlTransferMutex.WaitOne();
+
+            UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
+            packet.TransferType = UsbTransferTypes.ControlOut;
+            packet.Request = ControlRequest.MESSAGE_REQUEST;
+            packet.Index = 0;
+            packet.Value = 0;
+            packet.Length = (ushort)m_aoScanStatusMessage.Length;
+            Array.Copy(m_aoScanStatusMessage, packet.Buffer, m_aoScanStatusMessage.Length);
+
+            // send the status message
+            UsbControlOutRequest(packet);
+
+            // get the status response
+            packet.TransferType = UsbTransferTypes.ControlIn;
+
+            UsbControlInRequest(packet);
+
+            ControlTransferMutex.ReleaseMutex();
+
+            string response = m_ae.GetString(packet.Buffer, 0, packet.Buffer.Length);
+
+            if (response.Contains(PropertyValues.UNDERRUN))
+                errorCode = ErrorCodes.DataUnderrun;
+
+            return errorCode;
+        }
+
         //==============================================================================================
         /// <summary>
         /// Synchronizes access to the bulk in ready buffers queue
@@ -307,9 +401,13 @@ namespace MeasurementComputing.DAQFlex
                 else
                 {
                     if (m_bulkInReadyBuffers.Count > 0)
+                    {
                         return m_bulkInReadyBuffers.Dequeue();
+                    }
                     else
+                    {
                         return null;
+                    }
                 }
             }
         }
@@ -326,17 +424,25 @@ namespace MeasurementComputing.DAQFlex
         {
             lock (m_bulkInCompletedBuffersLock)
             {
-                if (queueAction == QueueAction.Enqueue)
+                try
                 {
-                    m_bulkInCompletedBuffers.Enqueue(bulkInBuffer);
-                    return null;
-                }
-                else
-                {
-                    if (m_bulkInCompletedBuffers.Count > 0)
-                        return m_bulkInCompletedBuffers.Dequeue();
-                    else
+                    if (queueAction == QueueAction.Enqueue)
+                    {
+                        m_bulkInCompletedBuffers.Enqueue(bulkInBuffer);
                         return null;
+                    }
+                    else
+                    {
+                        if (m_bulkInCompletedBuffers.Count > 0)
+                            return m_bulkInCompletedBuffers.Dequeue();
+                        else
+                            return null;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.Assert(false, ex.Message);
+                    return null;
                 }
             }
         }
@@ -367,7 +473,7 @@ namespace MeasurementComputing.DAQFlex
                 buffer = null;
             }
 
-            GC.Collect();
+            //GC.Collect();
 
             for (int i = 0; i < numberOfBulkInCopyBuffers; i++)
             {
@@ -387,7 +493,7 @@ namespace MeasurementComputing.DAQFlex
             return false;
         }
 
-        //===================================================================================================
+        //============================================================================================================================================================
         /// <summary>
         /// Reads a device's memory
         /// </summary>
@@ -395,44 +501,187 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="count">The number of bytes to read</param>
         /// <param name="buffer">The buffer containing the memory contents</param>
         /// <returns>The error code</returns>
-        //===================================================================================================
-        internal override ErrorCodes ReadDeviceMemory(ushort memoryOffset, byte count, out byte[] buffer)
+        //============================================================================================================================================================
+        internal override ErrorCodes ReadDeviceMemory1(byte memAddrCmd, byte memReadCmd, ushort memoryOffset, ushort memoryOffsetLength, byte count, out byte[] buffer)
         {
             ErrorCodes errorCode = ErrorCodes.NoErrors;
 
-            UsbSetupPacket packet = new UsbSetupPacket(count);
-            packet.TransferType = UsbTransferTypes.ControlOut;
-            packet.Request = MEM_ADDR;
-            packet.Value = 0;
-            packet.Index = 0;
-            packet.Length = 2;
+            if (count > Constants.MAX_COMMAND_LENGTH)
+                errorCode = ErrorCodes.CountGreaterThanMaxLength;
 
-            // store the memory offset in the first two bytes of the buffer
-            packet.Buffer[0] = (byte)(0x00FF & memoryOffset);
-            packet.Buffer[1] = (byte)((0xFF00 & memoryOffset) >> 8);
+            UsbSetupPacket packet;
 
             buffer = null;
 
-            if (count > Constants.MAX_COMMAND_LENGTH)
-                return ErrorCodes.CountGreaterThanMaxLength;
+            if (errorCode == ErrorCodes.NoErrors)
+            {
+                // create a packet to send the memory address command
+                packet = new UsbSetupPacket(memoryOffsetLength);
+                packet.TransferType = UsbTransferTypes.ControlOut;
+                packet.Request = memAddrCmd;
+                packet.Value = 0;
+                packet.Index = 0;
+                packet.Length = 2;
 
-            // send the mem address command
-            errorCode = UsbControlOutRequest(packet);
+                // store the memory offset in the first two bytes of the buffer
+                packet.Buffer[0] = (byte)(0x00FF & memoryOffset);
+                packet.Buffer[1] = (byte)((0xFF00 & memoryOffset) >> 8);
+
+                buffer = null;
+
+                // send the mem address command
+                errorCode = UsbControlOutRequest(packet);
+
+                if (errorCode == ErrorCodes.NoErrors)
+                {
+                    // create a new packet for reading a block of device memory
+                    packet = new UsbSetupPacket(count);
+                    packet.TransferType = UsbTransferTypes.ControlIn;
+                    packet.Request = memReadCmd;
+                    packet.Length = count;
+
+                    // read a block of memory (up to max packet size)
+                    errorCode = UsbControlInRequest(packet);
+
+                    buffer = packet.Buffer;
+                }
+
+                if (errorCode != ErrorCodes.NoErrors)
+                    errorCode = ErrorCodes.ErrorReadingDeviceMemory;
+            }
+
+            return errorCode;
+        }
+
+        //============================================================================================================================================================
+        /// <summary>
+        /// Reads a device's memory
+        /// </summary>
+        /// <param name="offset">The starting addresss</param>
+        /// <param name="count">The number of bytes to read</param>
+        /// <param name="buffer">The buffer containing the memory contents</param>
+        /// <returns>The error code</returns>
+        //============================================================================================================================================================
+        internal override ErrorCodes ReadDeviceMemory2(byte memReadCmd, ushort memoryOffset, ushort memoryOffsetLength, byte count, out byte[] buffer)
+        {
+            ErrorCodes errorCode = ErrorCodes.NoErrors;
+
+            if (count > Constants.MAX_COMMAND_LENGTH)
+                errorCode = ErrorCodes.CountGreaterThanMaxLength;
+
+            UsbSetupPacket packet;
+
+            buffer = null;
 
             if (errorCode == ErrorCodes.NoErrors)
             {
-                packet.TransferType = UsbTransferTypes.ControlIn;
-                packet.Request = MEM_READ;
-                packet.Length = count;
+                if (errorCode == ErrorCodes.NoErrors)
+                {
+                    // create a new packet for reading a block of device memory
+                    packet = new UsbSetupPacket(count);
+                    packet.TransferType = UsbTransferTypes.ControlIn;
+                    packet.Request = memReadCmd;
+                    packet.Value = memoryOffset;
+                    packet.Length = count;
 
-                // read a block of memory (up to max packet size)
-                errorCode = UsbControlInRequest(packet);
+                    // read a block of memory (up to max packet size)
+                    errorCode = UsbControlInRequest(packet);
 
-                buffer = packet.Buffer;
+                    buffer = packet.Buffer;
+                }
+
+                if (errorCode != ErrorCodes.NoErrors)
+                    errorCode = ErrorCodes.ErrorReadingDeviceMemory;
             }
 
-            if (errorCode != ErrorCodes.NoErrors)
-                errorCode = ErrorCodes.ErrorReadingDeviceMemory;
+            return errorCode;
+        }
+
+        //============================================================================================================================================================
+        /// <summary>
+        /// Reads a device's memory
+        /// </summary>
+        /// <param name="offset">The starting addresss</param>
+        /// <param name="count">The number of bytes to read</param>
+        /// <param name="buffer">The buffer containing the memory contents</param>
+        /// <returns>The error code</returns>
+        //============================================================================================================================================================
+        internal override ErrorCodes ReadDeviceMemory3(byte memReadCmd, ushort memoryOffset, ushort memoryOffsetLength, byte count, out byte[] buffer)
+        {
+            ErrorCodes errorCode = ErrorCodes.NoErrors;
+
+            if (count > Constants.MAX_COMMAND_LENGTH)
+                errorCode = ErrorCodes.CountGreaterThanMaxLength;
+
+            UsbSetupPacket packet;
+
+            buffer = null;
+
+            if (errorCode == ErrorCodes.NoErrors)
+            {
+                if (errorCode == ErrorCodes.NoErrors)
+                {
+                    // create a new packet for reading a block of device memory
+                    packet = new UsbSetupPacket(count);
+                    packet.TransferType = UsbTransferTypes.ControlIn;
+                    packet.Request = memReadCmd;
+                    packet.Index = memoryOffset;
+                    packet.Length = count;
+
+                    // read a block of memory (up to max packet size)
+                    errorCode = UsbControlInRequest(packet);
+
+                    buffer = packet.Buffer;
+                }
+
+                if (errorCode != ErrorCodes.NoErrors)
+                    errorCode = ErrorCodes.ErrorReadingDeviceMemory;
+            }
+
+            return errorCode;
+        }
+
+        //============================================================================================================================================================
+        /// <summary>
+        /// Reads a device's memory
+        /// </summary>
+        /// <param name="offset">The starting addresss</param>
+        /// <param name="count">The number of bytes to read</param>
+        /// <param name="buffer">The buffer containing the memory contents</param>
+        /// <returns>The error code</returns>
+        //============================================================================================================================================================
+        internal override ErrorCodes ReadDeviceMemory4(byte memReadCmd, ushort memoryOffset, ushort memoryOffsetLength, byte count, out byte[] buffer)
+        {
+            ErrorCodes errorCode = ErrorCodes.NoErrors;
+
+            if (count > Constants.MAX_COMMAND_LENGTH)
+                errorCode = ErrorCodes.CountGreaterThanMaxLength;
+
+            UsbSetupPacket packet;
+
+            buffer = null;
+
+            if (errorCode == ErrorCodes.NoErrors)
+            {
+                if (errorCode == ErrorCodes.NoErrors)
+                {
+                    // create a new packet for reading a block of device memory
+                    packet = new UsbSetupPacket(count);
+                    packet.TransferType = UsbTransferTypes.ControlIn;
+                    packet.Request = memReadCmd;
+                    packet.Value = memoryOffset;
+                    packet.Index = 0;
+                    packet.Length = count;
+
+                    // read a block of memory (up to max packet size)
+                    errorCode = UsbControlInRequest(packet);
+
+                    buffer = packet.Buffer;
+                }
+
+                if (errorCode != ErrorCodes.NoErrors)
+                    errorCode = ErrorCodes.ErrorReadingDeviceMemory;
+            }
 
             return errorCode;
         }
@@ -518,23 +767,28 @@ namespace MeasurementComputing.DAQFlex
             return errorCode;
         }
 
-        //===================================================================================================
+        //==============================================================================================================================================================================
         /// <summary>
         /// Overriden to Write data to a device's memory
         /// </summary>
-        /// <param name="memoryOffset">The starting addresss of the device's memory</param>
-        /// <param name="bufferOffset">The starting addresss of the data buffer</param>
-        /// <param name="buffer">The data buffer</param>
+        /// <param name="memAddrCmd">The device's memory address command</param>
+        /// <param name="memWriteCmd">The device's memory write command</param>
+        /// <param name="memoryOffset">The memory offset to start writing to</param>
+        /// <param name="memOffsetLength">The size of the memoryOffset value (typically 2 bytes)</param>
+        /// <param name="bufferOffset">The buffer offset</param>
+        /// <param name="buffer">The buffer containg the data to write to memory</param>
         /// <param name="count">The number of bytes to write</param>
-        /// <returns>The error code</returns>
-        //===================================================================================================
-        internal override ErrorCodes WriteDeviceMemory(ushort memoryOffset, ushort bufferOffset, byte[] buffer, byte count)
+        /// <returns></returns>
+        //==============================================================================================================================================================================
+        internal override ErrorCodes WriteDeviceMemory1(byte memAddrCmd, byte memWriteCmd, ushort memoryOffset, ushort memOffsetLength, ushort bufferOffset, byte[] buffer, byte count)
         {
+            m_controlTransferMutex.WaitOne();
+
             ErrorCodes errorCode = ErrorCodes.NoErrors;
 
-            UsbSetupPacket packet = new UsbSetupPacket(64);
+            UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_COMMAND_LENGTH);
             packet.TransferType = UsbTransferTypes.ControlOut;
-            packet.Request = MEM_ADDR;
+            packet.Request = memAddrCmd;
             packet.Value = 0;
             packet.Index = 0;
             packet.Length = 2;
@@ -542,7 +796,10 @@ namespace MeasurementComputing.DAQFlex
             packet.Buffer[1] = (byte)((0xFF00 & memoryOffset) >> 8);
 
             if (count > Constants.MAX_COMMAND_LENGTH)
+            {
+                m_controlTransferMutex.ReleaseMutex();
                 return ErrorCodes.CountGreaterThanMaxLength;
+            }
 
             // MemAddress command
             errorCode = UsbControlOutRequest(packet);
@@ -554,7 +811,7 @@ namespace MeasurementComputing.DAQFlex
             if (errorCode == ErrorCodes.NoErrors)
             {
                 packet.TransferType = UsbTransferTypes.ControlOut;
-                packet.Request = MEM_WRITE;
+                packet.Request = memWriteCmd;
                 packet.Value = 0x0;
 
                 for (int i = 0; i < count; i++)
@@ -569,10 +826,176 @@ namespace MeasurementComputing.DAQFlex
             if (errorCode != ErrorCodes.NoErrors)
                 errorCode = ErrorCodes.ErrorWritingDeviceMemory;
 
-            // MemWrite command
+            m_controlTransferMutex.ReleaseMutex();
+
+            return errorCode;
+        }
+
+        //==============================================================================================================================================================================
+        /// <summary>
+        /// Overriden to Write data to a device's memory
+        /// </summary>
+        /// <param name="memWriteCmd">The device's memory write command</param>
+        /// <param name="memoryOffset">The memory offset to start writing to</param>
+        /// <param name="memOffsetLength">The size of the memoryOffset value (typically 2 bytes)</param>
+        /// <param name="bufferOffset">The buffer offset</param>
+        /// <param name="buffer">The buffer containg the data to write to memory</param>
+        /// <param name="count">The number of bytes to write</param>
+        /// <returns></returns>
+        //==============================================================================================================================================================================
+        internal override ErrorCodes WriteDeviceMemory2(byte memWriteCmd, ushort memoryOffset, ushort memOffsetLength, ushort bufferOffset, byte[] buffer, byte count)
+        {
+            m_controlTransferMutex.WaitOne();
+
+            ErrorCodes errorCode = ErrorCodes.NoErrors;
+
+            if (count > Constants.MAX_COMMAND_LENGTH)
+                errorCode = ErrorCodes.CountGreaterThanMaxLength;
+
+            if (errorCode == ErrorCodes.NoErrors)
+            {
+                UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_COMMAND_LENGTH);
+                packet.TransferType = UsbTransferTypes.ControlOut;
+                packet.Request = memWriteCmd;
+                packet.Value = memoryOffset;
+
+                for (int i = 0; i < count; i++)
+                    packet.Buffer[i] = buffer[i + bufferOffset];
+
+                packet.Length = count;
+
+                // MemWrite command
+                errorCode = UsbControlOutRequest(packet);
+            }
+
+            if (errorCode != ErrorCodes.NoErrors)
+                errorCode = ErrorCodes.ErrorWritingDeviceMemory;
+
+            m_controlTransferMutex.ReleaseMutex();
+
+            return errorCode;
+        }
+
+        //==============================================================================================================================================================================
+        /// <summary>
+        /// Virtual method to Write data to a device's memory
+        /// </summary>
+        /// <param name="unlockKey">The unlock key</param>
+        /// <param name="memCmd">The device's memory read/write command</param>
+        /// <param name="memoryOffset">The memory offset to start writing to</param>
+        /// <param name="memOffsetLength">The size of the memoryOffset value (typically 2 bytes)</param>
+        /// <param name="bufferOffset">The buffer offset</param>
+        /// <param name="buffer">The buffer containg the data to write to memory</param>
+        /// <param name="count">The number of bytes to write</param>
+        /// <returns></returns>
+        //==============================================================================================================================================================================
+        internal override ErrorCodes WriteDeviceMemory3(ushort unlockKey, byte memCmd, ushort memoryOffset, ushort memOffsetLength, ushort bufferOffset, byte[] buffer, byte count)
+        {
+            m_controlTransferMutex.WaitOne();
+
+            ErrorCodes errorCode = ErrorCodes.NoErrors;
+
+            if (count > Constants.MAX_COMMAND_LENGTH)
+                errorCode = ErrorCodes.CountGreaterThanMaxLength;
+
+            if (errorCode == ErrorCodes.NoErrors)
+            {
+                UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_COMMAND_LENGTH);
+                packet.TransferType = UsbTransferTypes.ControlOut;
+                packet.Request = memCmd;
+                packet.Value = unlockKey;
+                packet.Index = memoryOffset;
+                packet.Length = count;
+
+                for (int i = 0; i < count; i++)
+                    packet.Buffer[i] = buffer[i + bufferOffset];
+
+                // MemWrite command
+                errorCode = UsbControlOutRequest(packet);
+            }
+
+            if (errorCode != ErrorCodes.NoErrors)
+                errorCode = ErrorCodes.ErrorWritingDeviceMemory;
+
+            m_controlTransferMutex.ReleaseMutex();
+
+            return errorCode;
+        }
+
+        //==============================================================================================================================================================================
+        /// <summary>
+        /// Virtual method to Write data to a device's memory
+        /// </summary>
+        /// <param name="unlockKey">The unlock key</param>
+        /// <param name="memCmd">The device's memory read/write command</param>
+        /// <param name="memoryOffset">The memory offset to start writing to</param>
+        /// <param name="memOffsetLength">The size of the memoryOffset value (typically 2 bytes)</param>
+        /// <param name="bufferOffset">The buffer offset</param>
+        /// <param name="buffer">The buffer containg the data to write to memory</param>
+        /// <param name="count">The number of bytes to write</param>
+        /// <returns></returns>
+        //==============================================================================================================================================================================
+        internal override ErrorCodes WriteDeviceMemory4(ushort unlockKey, byte memCmd, ushort memoryOffset, ushort memOffsetLength, ushort bufferOffset, byte[] buffer, byte count)
+        {
+            m_controlTransferMutex.WaitOne();
+
+            ErrorCodes errorCode = ErrorCodes.NoErrors;
+
+            if (count > Constants.MAX_COMMAND_LENGTH)
+                errorCode = ErrorCodes.CountGreaterThanMaxLength;
+
+            if (errorCode == ErrorCodes.NoErrors)
+            {
+                UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_COMMAND_LENGTH);
+                packet.TransferType = UsbTransferTypes.ControlOut;
+                packet.Request = memCmd;
+                packet.Value = memoryOffset;
+                packet.Index = 0;
+                packet.Length = count;
+
+                for (int i = 0; i < count; i++)
+                    packet.Buffer[i] = buffer[i + bufferOffset];
+
+                // MemWrite command
+                errorCode = UsbControlOutRequest(packet);
+            }
+
+            if (errorCode != ErrorCodes.NoErrors)
+                errorCode = ErrorCodes.ErrorWritingDeviceMemory;
+
+            m_controlTransferMutex.ReleaseMutex();
+
+            return errorCode;
+        }
+
+        //===================================================================================================
+        /// <summary>
+        /// Overriden to load data into the device's FPGA
+        /// </summary>
+        /// <param name="buffer">The data to load</param>
+        /// <returns>The error code</returns>
+        //===================================================================================================
+        internal override ErrorCodes LoadFPGA(byte request, byte[] buffer)
+        {
+            m_controlTransferMutex.WaitOne();
+
+            ErrorCodes errorCode;
+
+            UsbSetupPacket packet = new UsbSetupPacket(buffer.Length);
+            packet.TransferType = UsbTransferTypes.ControlOut;
+            packet.Request = request;
+            packet.Value = 0;
+            packet.Index = 0;
+            packet.Length = (ushort)buffer.Length;
+            Array.Copy(buffer, packet.Buffer, buffer.Length);
+            errorCode = UsbControlOutRequest(packet);
+            
+            m_controlTransferMutex.ReleaseMutex();
+
             return errorCode;
         }
     }
+
 
     //===========================================================================
     /// <summary>

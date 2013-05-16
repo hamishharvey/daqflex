@@ -18,19 +18,49 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 
 namespace MeasurementComputing.DAQFlex
 {
     class DebugLogger
     {
+        private static object m_writeLock = new Object();
+
         internal static System.Diagnostics.Stopwatch StopWatch = new System.Diagnostics.Stopwatch();
-        internal static List<string> DebugList = new List<string>();
+        private static List<string> DebugList = new List<string>();
 
         internal static void WriteLine(String stringFormat, params object[] args)
         {
 #if DEBUG
+            Monitor.Enter(m_writeLock);
+            
             DebugList.Add(StopWatch.ElapsedMilliseconds.ToString() + ": " + String.Format(stringFormat, args));
+
+            Monitor.Exit(m_writeLock);
 #endif
+        }
+
+        internal static void DumpDebugInfo()
+        {
+#if DEBUG
+            Monitor.Enter(m_writeLock);
+
+            foreach (string debugInfo in DebugList)
+            {
+                System.Diagnostics.Debug.WriteLine(debugInfo);
+            }
+
+            Monitor.Exit(m_writeLock);
+#endif
+        }
+
+        internal static void ClearDebugList()
+        {
+            Monitor.Enter(m_writeLock);
+
+            DebugList.Clear();
+
+            Monitor.Exit(m_writeLock);
         }
     }
 }

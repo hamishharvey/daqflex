@@ -24,6 +24,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Resources;
 using System.IO;
+using System.Windows.Forms;
 
 namespace MeasurementComputing.DAQFlex
 {
@@ -33,19 +34,30 @@ namespace MeasurementComputing.DAQFlex
 
 #if !WindowsCE
         protected const int INTERNAL_READ_BUFFER_SIZE = 1024000;
-#else
-        protected const int INTERNAL_READ_BUFFER_SIZE = 256000;
-#endif
         protected const int INTERNAL_WRITE_BUFFER_SIZE = 65536;
+#else
+        protected const int INTERNAL_READ_BUFFER_SIZE = 65536;
+        protected const int INTERNAL_WRITE_BUFFER_SIZE = 65536;
+#endif
+        private const double BULK_IN_XFER_TIME = 0.05;  // 50 mS
+        private const double BULK_OUT_XFER_TIME = 0.05; // 50 mS
 
         private DeviceInfo m_deviceInfo;
         private DaqDevice m_daqDevice;
         private ErrorCodes m_errorCode;
+        private ErrorCodes m_inputScanErrorCode;
+        private ErrorCodes m_outputScanErrorCode;
         private UsbPlatformInterop m_platformInterop;
+#if !WindowsCE
+        private HidPlatformInterop m_hidPlatformInterop;
+#endif
         private List<UsbSetupPacket> m_usbPackets;
+        private List<UsbSetupPacket> m_usbPacketsDirect;
         protected string m_internalReadString;
         protected double m_internalReadValue;
         protected byte[] m_internalReadBuffer;
+        protected string m_internalReadStringDirect;
+        protected double m_internalReadValueDirect;
         protected unsafe void* m_externalReadBuffer;
         protected int m_externalReadBufferSize;
         protected bool m_inputBufferSizeOverride;
@@ -57,12 +69,14 @@ namespace MeasurementComputing.DAQFlex
         protected int m_currentInputScanReadIndex;
         protected volatile int m_lastInputScanWriteIndex;
         private int m_totalSamplesToReadPerChannel;
-        private int m_inputSamplesReadPerChannel;
+        private ulong m_inputSamplesReadPerChannel;
         private int m_totalBytesToRead;
-        private int m_totalBytesReceived;
+        private ulong m_totalBytesReceived;
         protected ASCIIEncoding m_ae;
-        protected Queue<UsbSetupPacket> m_deferredMessages = new Queue<UsbSetupPacket>();
-        protected List<string> m_deferredResponses = new List<string>();
+        protected Queue<UsbSetupPacket> m_deferredInputMessages = new Queue<UsbSetupPacket>();
+        protected Queue<UsbSetupPacket> m_deferredOutputMessages = new Queue<UsbSetupPacket>();
+        protected List<string> m_deferredInputResponses = new List<string>();
+        protected List<string> m_deferredOutputResponses = new List<string>();
         protected UsbSetupPacket m_deferredResponsePacket;
         private BulkInBuffer m_bulkReadBuffer;
         private Thread m_inputScanThread;
@@ -75,7 +89,7 @@ namespace MeasurementComputing.DAQFlex
         private bool m_outputScanComplete;
         private volatile ScanState m_inputScanState;
         private CriticalParams m_criticalParams = new CriticalParams();
-        private long m_inputScanCount;
+        private ulong m_inputScanCount;
         private long m_inputScanIndex;
         private CallbackControl m_onDataAvailableCallbackControl;
         private CallbackControl m_onInputScanCompleteCallbackControl;
@@ -86,20 +100,24 @@ namespace MeasurementComputing.DAQFlex
         private int m_availableSamplesForCallbackSinceStartOfScan;
         private object[] m_scanCompleteCallbackParam = new object[1];
         private object[] m_scanErrorCallbackParam = new object[1];
+
         private byte[] m_aiStatusMessage = new byte[Constants.MAX_COMMAND_LENGTH];
         private byte[] m_aiTrigStatus = new byte[Constants.MAX_COMMAND_LENGTH];
         private byte[] m_aiRearmStatus = new byte[Constants.MAX_COMMAND_LENGTH];
         private byte[] m_aiQuerySamples = new byte[Constants.MAX_COMMAND_LENGTH];
         private byte[] m_aiScanSamples = new byte[Constants.MAX_COMMAND_LENGTH];
-        private byte[] m_aiScanRate = new byte[Constants.MAX_COMMAND_LENGTH];
-        private byte[] m_aiScanStart = new byte[Constants.MAX_COMMAND_LENGTH];
         private byte[] m_aoStatusMessage = new byte[Constants.MAX_COMMAND_LENGTH];
-        private bool m_deferredMessagesSent;
+        private byte[] m_aiScanStopMessage = new byte[Constants.MAX_COMMAND_LENGTH];
+        private byte[] m_aoScanStopMessage = new byte[Constants.MAX_COMMAND_LENGTH];
+
         private int m_invokeCallbackCount;
         private UsbSetupPacket m_controlInPacket;
         private UsbSetupPacket m_controlOutPacket;
+        private UsbSetupPacket m_controlInPacketDirect;
+        private UsbSetupPacket m_controlOutPacketDirect;
         private bool m_inputBufferFilled;
         private bool m_inputScanStarted;
+        private Object m_callbackLock = new Object();
         protected bool m_deviceLost = false;
         protected ScanState m_inputScanStatus;
         protected System.Diagnostics.Stopwatch m_readStopWatch = new System.Diagnostics.Stopwatch();
@@ -108,7 +126,7 @@ namespace MeasurementComputing.DAQFlex
         protected int m_outputTransferStartIndex;
         protected int m_currentOutputScanWriteIndex;
         protected int m_currentOutputScanOutputIndex;
-        protected long m_outputScanCount;
+        protected ulong m_outputScanCount;
         protected long m_outputScanIndex;
         protected bool m_outputScanStarted;
         protected int m_numberOfSamplesPerChannelWrittenToDevice;
@@ -122,56 +140,59 @@ namespace MeasurementComputing.DAQFlex
         protected int m_totalBytesReceivedByDevice;
         protected StopOutputScanDelegate m_stopOutputScanDelegate;
         protected AsyncCallback m_stopOutputScanCallback;
+        protected Object m_deviceLock;
+        protected string m_inputBlockSize;
 
-        internal DriverInterface(DaqDevice daqDevice, DeviceInfo deviceInfo)
+        internal DriverInterface(DaqDevice daqDevice, DeviceInfo deviceInfo, Object deviceLock)
         {
             m_deviceInfo = deviceInfo;
             m_daqDevice = daqDevice;
+            m_deviceLock = deviceLock;
 
             m_platformInterop = PlatformInterop.GetUsbPlatformInterop(deviceInfo, m_criticalParams);
 
             // the error code may be set if the device did not initialzie
             m_errorCode = m_platformInterop.ErrorCode;
 
-            m_internalReadBuffer = new byte[INTERNAL_READ_BUFFER_SIZE];
-
             m_usbPackets = new List<UsbSetupPacket>();
+            m_usbPacketsDirect = new List<UsbSetupPacket>();
             m_ae = new ASCIIEncoding();
 
             string message;
 
-            // convert message to an array of bytes for the driver interface
+            // convert following messages to an array of bytes for direct use by this driver interface
+
             message = "?AISCAN:STATUS";
-            for (int i = 0; i < message.Length; i++)
-                m_aiStatusMessage[i] = (byte)(Char.ToUpper(message[i]));
+            Array.Clear(m_aiStatusMessage, 0, m_aiStatusMessage.Length);
+            m_ae.GetBytes(message.ToCharArray(), 0, message.Length, m_aiStatusMessage, 0);
 
             message = "?AISCAN:TRIG";
-            for (int i = 0; i < message.Length; i++)
-                m_aiTrigStatus[i] = (byte)(Char.ToUpper(message[i]));
+            Array.Clear(m_aiTrigStatus, 0, m_aiTrigStatus.Length);
+            m_ae.GetBytes(message.ToCharArray(), 0, message.Length, m_aiTrigStatus, 0);
 
             message = "?AITRIG:REARM";
-            for (int i = 0; i < message.Length; i++)
-                m_aiRearmStatus[i] = (byte)(Char.ToUpper(message[i]));
+            Array.Clear(m_aiRearmStatus, 0, m_aiRearmStatus.Length);
+            m_ae.GetBytes(message.ToCharArray(), 0, message.Length, m_aiRearmStatus, 0);
 
             message = "?AISCAN:SAMPLES";
-            for (int i = 0; i < message.Length; i++)
-                m_aiQuerySamples[i] = (byte)(Char.ToUpper(message[i]));
+            Array.Clear(m_aiQuerySamples, 0, m_aiQuerySamples.Length);
+            m_ae.GetBytes(message.ToCharArray(), 0, message.Length, m_aiQuerySamples, 0);
 
             message = "AISCAN:SAMPLES=";
-            for (int i = 0; i < message.Length; i++)
-                m_aiScanSamples[i] = (byte)(Char.ToUpper(message[i]));
-
-            message = "AISCAN:RATE=";
-            for (int i = 0; i < message.Length; i++)
-                m_aiScanRate[i] = (byte)(Char.ToUpper(message[i]));
-
-            message = "AISCAN:START";
-            for (int i = 0; i < message.Length; i++)
-                m_aiScanStart[i] = (byte)(Char.ToUpper(message[i]));
+            Array.Clear(m_aiScanSamples, 0, m_aiScanSamples.Length);
+            m_ae.GetBytes(message.ToCharArray(), 0, message.Length, m_aiScanSamples, 0);
 
             message = "?AOSCAN:STATUS";
-            for (int i = 0; i < message.Length; i++)
-                m_aoStatusMessage[i] = (byte)(Char.ToUpper(message[i]));
+            Array.Clear(m_aoStatusMessage, 0, m_aoStatusMessage.Length);
+            m_ae.GetBytes(message.ToCharArray(), 0, message.Length, m_aoStatusMessage, 0);
+
+            message = "AISCAN:STOP";
+            Array.Clear(m_aiScanStopMessage, 0, m_aiScanStopMessage.Length);
+            m_ae.GetBytes(message.ToCharArray(), 0, message.Length, m_aiScanStopMessage, 0);
+
+            message = "AOSCAN:STOP";
+            Array.Clear(m_aoScanStopMessage, 0, m_aoScanStopMessage.Length);
+            m_ae.GetBytes(message.ToCharArray(), 0, message.Length, m_aoScanStopMessage, 0);
 
             m_deferredResponsePacket = new UsbSetupPacket(Constants.MAX_COMMAND_LENGTH);
             m_deferredResponsePacket.TransferType = UsbTransferTypes.ControlIn;
@@ -190,6 +211,14 @@ namespace MeasurementComputing.DAQFlex
             m_controlOutPacket.TransferType = UsbTransferTypes.ControlOut;
             m_controlOutPacket.Request = ControlRequest.MESSAGE_REQUEST;
 
+            m_controlInPacketDirect = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
+            m_controlInPacketDirect.TransferType = UsbTransferTypes.ControlIn;
+            m_controlInPacketDirect.Request = ControlRequest.MESSAGE_REQUEST;
+
+            m_controlOutPacketDirect = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
+            m_controlOutPacketDirect.TransferType = UsbTransferTypes.ControlOut;
+            m_controlOutPacketDirect.Request = ControlRequest.MESSAGE_REQUEST;
+
             m_criticalParams.ScanType = ScanType.AnalogInput;
 
             m_currentOutputScanWriteIndex = 0;
@@ -199,6 +228,11 @@ namespace MeasurementComputing.DAQFlex
             {
                 m_externalReadBuffer = null;
             }
+
+            m_inputBlockSize = PropertyValues.DEFAULT;
+
+            // by default, don't let old data that hasn't been read yet get overwritten
+            m_criticalParams.InputScanOverwrite = false;
 
             m_internalReadBuffer = new byte[INTERNAL_READ_BUFFER_SIZE];
             m_internalWriteBuffer = new byte[INTERNAL_WRITE_BUFFER_SIZE];
@@ -221,7 +255,6 @@ namespace MeasurementComputing.DAQFlex
             {
                 int deltaByteIndex;
                 int channelCount;
-                int byteRatio;
 
                 if (value > m_currentInputScanReadIndex)
                     deltaByteIndex = (value - m_currentInputScanReadIndex);
@@ -229,8 +262,7 @@ namespace MeasurementComputing.DAQFlex
                     deltaByteIndex = (m_internalReadBuffer.Length - m_currentInputScanReadIndex + value);
 
                 channelCount = m_criticalParams.AiChannelCount;
-                byteRatio = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
-                m_inputSamplesReadPerChannel += deltaByteIndex / channelCount / byteRatio;
+                m_inputSamplesReadPerChannel += (ulong)(deltaByteIndex / channelCount / m_criticalParams.DataInXferSize);
 
                 m_currentInputScanReadIndex = value;
 
@@ -267,6 +299,30 @@ namespace MeasurementComputing.DAQFlex
 
         //===========================================================================================
         /// <summary>
+        /// The user specified block size for input scans
+        /// </summary>
+        //===========================================================================================
+        internal string InputBlockSize
+        {
+            get { return m_inputBlockSize; }
+
+            set 
+            {
+                // initially set it to the device's max packet size
+                int size = m_deviceInfo.MaxPacketSize;
+
+                PlatformParser.TryParse(value, out size);
+
+                int multiplier = (int)Math.Ceiling(size / (double)m_deviceInfo.MaxPacketSize);
+
+                size = multiplier * m_deviceInfo.MaxPacketSize;
+
+                m_inputBlockSize = size.ToString(); 
+            }
+        }
+
+        //===========================================================================================
+        /// <summary>
         /// A reference to the abstract platform interop object
         /// </summary>
         //===========================================================================================
@@ -274,7 +330,18 @@ namespace MeasurementComputing.DAQFlex
         {
             get { return m_platformInterop; }
         }
-
+        
+#if !WindowsCE
+        internal HidPlatformInterop HidPlatformInterop
+        {
+            get {    
+               if (m_hidPlatformInterop==null)
+                  m_hidPlatformInterop = PlatformInterop.GetHidPlatformInterop(m_deviceInfo, m_criticalParams);
+                  
+               return m_hidPlatformInterop;
+               }
+        }
+#endif
         //===========================================================================================
         /// <summary>
         /// Calculates the size of the buffer that will be used for each
@@ -284,9 +351,8 @@ namespace MeasurementComputing.DAQFlex
         //===========================================================================================
         internal int GetOptimalInputBufferSize(double scanRate)
         {
-            int bufferSize = 0;
             int packetSize = m_criticalParams.InputPacketSize;
-            int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
+            int bufferSize = 0;
 
             if (scanRate == 0.0 || packetSize == 0)
                 return 0;
@@ -303,7 +369,7 @@ namespace MeasurementComputing.DAQFlex
             else
             {
                 // Set buffer size for 50 mS transfers
-                bufferSize = Math.Max(m_criticalParams.InputPacketSize, (int)(byteRatio * 0.05 * (double)scanRate));
+                bufferSize = Math.Max(m_criticalParams.InputPacketSize, (int)(m_criticalParams.DataInXferSize * 0.05 * (double)scanRate));
 
                 if (m_criticalParams.InputConversionMode == InputConversionMode.Simultaneous)
                     bufferSize *= channelCount;
@@ -329,7 +395,6 @@ namespace MeasurementComputing.DAQFlex
         {
             int bufferSize = 0;
             int packetSize = m_criticalParams.OutputPacketSize;
-            int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AoDataWidth / (double)Constants.BITS_PER_BYTE);
 
             if (scanRate == 0.0 || packetSize == 0)
                 return 0;
@@ -340,7 +405,7 @@ namespace MeasurementComputing.DAQFlex
                 return 0;
 
             // Set buffer size for 50 mS transfers
-            bufferSize = Math.Max(m_criticalParams.OutputPacketSize, (int)(byteRatio * 0.05 * (double)scanRate));
+            bufferSize = Math.Max(m_criticalParams.OutputPacketSize, (int)(channelCount * m_criticalParams.DataInXferSize * BULK_OUT_XFER_TIME * (double)scanRate));
 
             if (bufferSize % packetSize != 0)
             {
@@ -349,24 +414,32 @@ namespace MeasurementComputing.DAQFlex
             }
 
             return bufferSize;
+
+            //if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+            //    return bufferSize;
+            //else
+            //    // the transfer size can't be larger than the device's output FIFO size
+            //    return (int)Math.Min(bufferSize, m_criticalParams.OutputFifoSize);
         }
 
         //======================================================================================
         /// <summary>
-        /// Transfers the incoming command to the device using one of the platform interop objects
+        /// Transfers the incoming message to the device using one of the platform interop objects
+        /// Each message results in a Send/Receive transfer. The Send is to send the message to
+        /// the device through a Control Out transfer and the Receive is to receive a response
+        /// through a Control In transfer
         /// </summary>
         /// <param name="incomingMessage">The incoming message string</param>
         /// <returns>The error code</returns>
         //======================================================================================
-        internal ErrorCodes TransferMessage(byte[] incomingMessage, ResponseType responseType)
+        internal ErrorCodes TransferMessage(byte[] incomingMessage)
         {
             if (m_deviceLost)
                 m_deviceLost = !m_platformInterop.AcquireDevice();
 
             ErrorCodes errorCode = ErrorCodes.NoErrors;
 
-            UsbSetupPacket stopInputScanPacket;
-            UsbSetupPacket stopOutputScanPacket;
+            UsbSetupPacket packet;
 
             if (!m_platformInterop.DeviceInitialized)
             {
@@ -374,19 +447,328 @@ namespace MeasurementComputing.DAQFlex
             }
             else
             {
+                // Acquire the  mutex so that a Control Out
                 m_platformInterop.ControlTransferMutex.WaitOne();
 
-                // now create the message packets for the incoming message
+                // create packets for the incoming message
+                // each message will get a packet for a Control Out transfer and a Control In transfer
                 CreateUsbPackets(incomingMessage);
 
-                foreach (UsbSetupPacket packet in m_usbPackets)
+                if (errorCode == ErrorCodes.NoErrors)
+                {
+                    ////////////////////////////////////////////
+                    // Control Out request
+                    ////////////////////////////////////////////
+                    packet = m_usbPackets[0];
+
+                    if (m_usbPackets.Count == 1 && packet.TransferType == UsbTransferTypes.ControlOut)
+                    {
+                        m_internalReadString = String.Empty;
+                        m_internalReadValue = double.NaN;
+                    }
+
+
+                    // Convert any decimal separators back to en-US
+                    for (int i = 0; i < packet.Buffer.Length; i++)
+                    {
+                        if (packet.Buffer[i] == (byte)PlatformInterop.LocalNumberDecimalSeparator)
+                            packet.Buffer[i] = (byte)Constants.DECIMAL.ToCharArray()[0];
+                    }
+
+                    // define a packet for deferred messages
+                    UsbSetupPacket deferredPacket = null;
+
+                    // send the Control Out request to the device
+                    if (!packet.DeferTransfer)
+                    {
+                        errorCode = m_platformInterop.UsbControlOutRequest(packet);
+                    }
+                    else
+                    {
+                        // queue the message packet. It will be sent at the beginning of a scan thread
+
+                        // first make a copy so it doesn't get overwritten since its an instance member of this class
+                        deferredPacket = new UsbSetupPacket(packet.Buffer.Length);
+
+                        deferredPacket.DeferTransfer = packet.DeferTransfer;
+                        deferredPacket.TransferType = packet.TransferType;
+                        deferredPacket.Request = packet.Request;
+                        deferredPacket.Value = packet.Value;
+                        deferredPacket.Index = packet.Index;
+                        deferredPacket.Length = packet.Length;
+                        Array.Copy(packet.Buffer, deferredPacket.Buffer, packet.Buffer.Length);
+                    }
+
+
+                    ////////////////////////////////////////////
+                    // Control In request
+                    ////////////////////////////////////////////
+                    if (m_usbPackets.Count > 1)
+                    {
+                        packet = m_usbPackets[1];
+
+                        errorCode = m_platformInterop.UsbControlInRequest(packet);
+
+                        if (packet.Request == ControlRequest.MESSAGE_REQUEST)
+                        {
+                            if (errorCode == ErrorCodes.NoErrors)
+                            {
+                                m_internalReadString = m_ae.GetString(packet.Buffer, 0, packet.Buffer.Length);
+
+                                if (m_internalReadString.IndexOf(Constants.NULL_TERMINATOR) >= 0)
+                                {
+                                    int indexOfNt = m_internalReadString.IndexOf(Constants.NULL_TERMINATOR);
+                                    m_internalReadString = m_internalReadString.Remove(indexOfNt, m_internalReadString.Length - indexOfNt);
+                                }
+
+                                if (m_internalReadString == PropertyValues.INVALID)
+                                {
+                                    errorCode = ErrorCodes.InvalidMessage;
+                                }
+                                else
+                                {
+                                    m_internalReadValue = TryConvertData(ref m_internalReadString);
+                                }
+                            }
+                            else
+                            {
+                                m_internalReadString = String.Empty;
+                                m_internalReadValue = double.NaN;
+                            }
+                        }
+                    }
+
+                    if (m_startInputScan)
+                    {
+                        if (errorCode == ErrorCodes.NoErrors)
+                        {
+                            if (deferredPacket != null)
+                                m_deferredInputMessages.Enqueue(deferredPacket);
+
+                            ScanState scanState = GetInputScanState();
+
+                            if (scanState == ScanState.Running)
+                            {
+                                errorCode = ErrorCodes.InputScanAlreadyInProgress;
+                            }
+                            else if (m_deviceInfo.EndPointIn == 0)
+                            {
+                                errorCode = ErrorCodes.InvalidMessage;
+                            }
+                            else
+                            {
+                                // m_startInputScan is set to true in CheckForCriticalParams
+                                m_deferredInputResponses.Clear();
+
+                                CheckTriggerRearm();
+
+                                if (m_criticalParams.InputSampleMode == SampleMode.Continuous)
+                                {
+                                    if (m_onDataAvailableCallbackControl != null)
+                                    {
+                                        if (m_criticalParams.AiChannelCount * m_criticalParams.DataInXferSize * m_onDataAvailableCallbackControl.NumberOfSamples > m_internalReadBuffer.Length / 2)
+                                        {
+                                            errorCode = ErrorCodes.CallbackCountTooLarge;
+                                        }
+                                    }
+                                }
+
+                                // release the control transfer mutex so that the deferred messages can be sent
+                                m_platformInterop.ControlTransferMutex.ReleaseMutex();
+
+                                if (errorCode == ErrorCodes.NoErrors)
+                                    errorCode = StartInputScan();
+
+                                // reaquire the control transfer mutex
+                                m_platformInterop.ControlTransferMutex.WaitOne();
+
+                                if (errorCode == ErrorCodes.NoErrors)
+                                {
+                                    if (m_inputScanErrorCode != ErrorCodes.NoErrors)
+                                    {
+                                        errorCode = m_inputScanErrorCode;
+                                    }
+                                    else if (packet.DeferTransfer)
+                                    {
+                                        m_internalReadString = m_deferredInputResponses[0].Trim(new char[] { Constants.NULL_TERMINATOR });
+                                    }
+                                }
+                                else
+                                {
+                                    // if an error occurred dont't send the deferred message
+                                    m_deferredInputMessages.Clear();
+                                }
+                            }
+                        }
+                    }
+                    else if (m_startOutputScan)
+                    {
+                        if (errorCode == ErrorCodes.NoErrors)
+                        {
+                            if (deferredPacket != null)
+                                m_deferredOutputMessages.Enqueue(deferredPacket);
+
+                            ScanState scanState = GetOutputScanState();
+
+                            if (scanState == ScanState.Running)
+                            {
+                                errorCode = ErrorCodes.OutputScanAlreadyInProgress;
+                            }
+                            else if (m_deviceInfo.EndPointIn == 0)
+                            {
+                                errorCode = ErrorCodes.InvalidMessage;
+                            }
+                            else
+                            {
+                                // m_startInputScan is set to true in CheckForCriticalParams
+                                m_deferredOutputResponses.Clear();
+
+                                // release the control transfer mutex so that the deferred messages can be sent
+                                m_platformInterop.ControlTransferMutex.ReleaseMutex();
+
+                                if (errorCode == ErrorCodes.NoErrors)
+                                    errorCode = StartOutputScan();
+
+                                // reaquire the control transfer mutex
+                                m_platformInterop.ControlTransferMutex.WaitOne();
+
+                                if (errorCode == ErrorCodes.NoErrors)
+                                {
+                                    if (m_outputScanErrorCode != ErrorCodes.NoErrors)
+                                    {
+                                        errorCode = m_outputScanErrorCode;
+                                    }
+                                    else if (packet.DeferTransfer)
+                                    {
+                                        if (m_deferredOutputResponses.Count > 0)
+                                            m_internalReadString = m_deferredOutputResponses[0].Trim(new char[] { Constants.NULL_TERMINATOR });
+                                        else
+                                            System.Diagnostics.Debug.Assert(false, "Deferred response list is empty");
+                                    }
+                                }
+                                else
+                                {
+                                    // if an error occurred don't send the deferred message
+                                    m_deferredOutputMessages.Clear();
+                                }
+                            }
+                        }
+                    }
+                    else if (m_initiateStopForInput && m_deviceInfo.EndPointIn != 0)
+                    {
+                        // release the control transfer mutex so that the Input scan thread can exit
+                        m_platformInterop.ControlTransferMutex.ReleaseMutex();
+
+                        // m_initiateStopForInput is set to true in CheckForCriticalParams
+
+                        if (deferredPacket != null)
+                        {
+                            // executes on Linux - this must be called first before sending
+                            // the deferred STOP command
+                            StopInputScan(false);
+
+                            errorCode = m_platformInterop.UsbControlOutRequest(deferredPacket);
+
+                            if (m_deferredOutputResponses.Count > 0)
+                                m_internalReadString = m_deferredOutputResponses[0].Trim(new char[] { Constants.NULL_TERMINATOR });
+                            else
+                                System.Diagnostics.Debug.Assert(false, "Deferred response list is empty");
+
+                            m_platformInterop.FlushInputDataFromDevice();
+                            m_initiateStopForInput = false;
+                        }
+                        else
+                        {
+                            // executes on Windows
+                            StopInputScan(true);
+                        }
+
+                        // reaquire the control transfer mutex
+                        m_platformInterop.ControlTransferMutex.WaitOne();
+                    }
+                    else if (m_initiateStopForOutput && m_deviceInfo.EndPointOut != 0)
+                    {
+                        // release the control transfer mutex so that the Input scan thread can exit
+                        m_platformInterop.ControlTransferMutex.ReleaseMutex();
+
+                        // m_initiateStopForInput is set to true in CheckForCriticalParams
+
+                        if (deferredPacket != null)
+                        {
+                            // executes on Linux - this must be called first before sending
+                            // the deferred STOP command
+                            StopOutputScan(false);
+
+                            errorCode = m_platformInterop.UsbControlOutRequest(deferredPacket);
+
+                            if (m_deferredOutputResponses.Count > 0)
+                                m_internalReadString = m_deferredOutputResponses[0].Trim(new char[] { Constants.NULL_TERMINATOR });
+                            else
+                                System.Diagnostics.Debug.Assert(false, "Deferred response list is empty");
+
+                            m_initiateStopForOutput = false;
+                        }
+                        else
+                        {
+                            // executes on Windows
+                            StopOutputScan(true);
+                        }
+
+                        // reaquire the control transfer mutex
+                        m_platformInterop.ControlTransferMutex.WaitOne();
+                    }
+                }
+
+                m_platformInterop.ControlTransferMutex.ReleaseMutex();
+            }
+
+            if (errorCode == ErrorCodes.DeviceNotResponding)
+            {
+                ReleaseDevice();
+                m_deviceLost = true;
+            }
+
+            return errorCode;
+        }
+
+        //======================================================================================
+        /// <summary>
+        /// Transfers the incoming message to the device using one of the platform interop objects
+        /// Each message results in a Send/Receive transfer. The Send is to send the message to
+        /// the device through a Control Out transfer and the Receive is to receive a response
+        /// through a Control In transfer
+        /// </summary>
+        /// <param name="incomingMessage">The incoming message string</param>
+        /// <returns>The error code</returns>
+        //======================================================================================
+        internal ErrorCodes TransferMessageDirect(byte[] incomingMessage)
+        {
+            if (m_deviceLost)
+                m_deviceLost = !m_platformInterop.AcquireDevice();
+
+            ErrorCodes errorCode = ErrorCodes.NoErrors;
+
+            if (!m_platformInterop.DeviceInitialized)
+            {
+                errorCode = ErrorCodes.DeviceNotInitialized;
+            }
+            else
+            {
+                // Acquire the  mutex so that a Control Out
+                m_platformInterop.ControlTransferMutex.WaitOne();
+
+                // create packets for the incoming message
+                // each messasge will get a packet for a Control Out transfer and a Control In transfer
+                CreateUsbPacketsDirect(incomingMessage);
+
+                foreach (UsbSetupPacket packet in m_usbPacketsDirect)
                 {
                     if (errorCode == ErrorCodes.NoErrors)
                     {
-                        if (m_usbPackets.Count == 1 && packet.TransferType == UsbTransferTypes.ControlOut)
+                        if (m_usbPacketsDirect.Count == 1 && packet.TransferType == UsbTransferTypes.ControlOut)
                         {
-                            m_internalReadString = String.Empty;
-                            m_internalReadValue = double.NaN;
+                            m_internalReadStringDirect = String.Empty;
+                            m_internalReadValueDirect = double.NaN;
                         }
 
                         // Control In request
@@ -398,198 +780,42 @@ namespace MeasurementComputing.DAQFlex
                             {
                                 if (errorCode == ErrorCodes.NoErrors)
                                 {
-                                    m_internalReadString = m_ae.GetString(packet.Buffer, 0, packet.Buffer.Length);
+                                    m_internalReadStringDirect = m_ae.GetString(packet.Buffer, 0, packet.Buffer.Length);
 
-                                    if (m_internalReadString.IndexOf(Constants.NULL_TERMINATOR) >= 0)
+                                    if (m_internalReadStringDirect.IndexOf(Constants.NULL_TERMINATOR) >= 0)
                                     {
-                                        int indexOfNt = m_internalReadString.IndexOf(Constants.NULL_TERMINATOR);
-                                        m_internalReadString = m_internalReadString.Remove(indexOfNt, m_internalReadString.Length - indexOfNt);
+                                        int indexOfNt = m_internalReadStringDirect.IndexOf(Constants.NULL_TERMINATOR);
+                                        m_internalReadStringDirect = m_internalReadStringDirect.Remove(indexOfNt, m_internalReadStringDirect.Length - indexOfNt);
                                     }
 
-                                    m_internalReadValue = TryConvertData(ref m_internalReadString);
+                                    if (m_internalReadStringDirect == PropertyValues.INVALID)
+                                    {
+                                        errorCode = ErrorCodes.InvalidMessage;
+                                    }
+                                    else
+                                    {
+                                        m_internalReadValueDirect = TryConvertData(ref m_internalReadStringDirect);
+                                    }
                                 }
                                 else
                                 {
-                                    m_internalReadString = String.Empty;
-                                    m_internalReadValue = double.NaN;
+                                    m_internalReadStringDirect = String.Empty;
+                                    m_internalReadValueDirect = double.NaN;
                                 }
                             }
                         }
                         // Control Out request
                         else if (packet.TransferType == UsbTransferTypes.ControlOut)
                         {
+                            // Convert any decimal separators back to en-US
+                            for (int i = 0; i < packet.Buffer.Length; i++)
+                            {
+                                if (packet.Buffer[i] == (byte)PlatformInterop.LocalNumberDecimalSeparator)
+                                    packet.Buffer[i] = (byte)Constants.DECIMAL.ToCharArray()[0];
+                            }
+
                             // send the Control Out request to the device
-                            if (!packet.DeferTransfer)
-                            {
-                                errorCode = m_platformInterop.UsbControlOutRequest(packet);
-                            }
-                            else
-                            {
-                                // queue the message packet. It will be sent at the beginning of a scan thread
-                                m_deferredMessages.Enqueue(packet);
-                            }
-
-                            if (m_startInputScan)
-                            {
-                                if (errorCode == ErrorCodes.NoErrors)
-                                {
-                                    ScanState scanState = GetInputScanState();
-
-                                    if (scanState == ScanState.Running)
-                                    {
-                                        errorCode = ErrorCodes.InputScanAlreadyInProgress;
-                                    }
-                                    else if (m_deviceInfo.EndPointIn == 0)
-                                    {
-                                        errorCode = ErrorCodes.InvalidMessage;
-                                    }
-                                    else
-                                    {
-                                        // m_startInputScan is set to true in CheckForCriticalParams
-                                        m_deferredResponses.Clear();
-
-                                        CheckTriggerRearm();
-
-                                        if (m_criticalParams.InputSampleMode == SampleMode.Continuous)
-                                        {
-                                            if (m_onDataAvailableCallbackControl != null)
-                                            {
-                                                int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
-
-                                                if (m_criticalParams.AiChannelCount * byteRatio * m_onDataAvailableCallbackControl.NumberOfSamples > m_internalReadBuffer.Length / 2)
-                                                {
-                                                    errorCode = ErrorCodes.CallbackCountTooLarge;
-                                                }
-                                            }
-                                        }
-
-                                        // release the control transfer mutex so that the deferred messages can be sent
-                                        m_platformInterop.ControlTransferMutex.ReleaseMutex();
-
-                                        if (errorCode == ErrorCodes.NoErrors)
-                                            errorCode = StartInputScan();
-
-                                        // reaquire the control transfer mutex
-                                        m_platformInterop.ControlTransferMutex.WaitOne();
-
-                                        if (errorCode == ErrorCodes.NoErrors)
-                                        {
-                                            if (m_errorCode != ErrorCodes.NoErrors)
-                                                errorCode = m_errorCode;
-                                            else if (packet.DeferTransfer)
-                                                m_internalReadString = m_deferredResponses[0].Trim(new char[] { Constants.NULL_TERMINATOR });
-                                        }
-                                    }
-                                }
-                            }
-                            else if (m_startOutputScan)
-                            {
-                                if (errorCode == ErrorCodes.NoErrors)
-                                {
-                                    ScanState scanState = GetOutputScanState();
-
-                                    if (scanState == ScanState.Running)
-                                    {
-                                        errorCode = ErrorCodes.OutputScanAlreadyInProgress;
-                                    }
-                                    else if (m_deviceInfo.EndPointIn == 0)
-                                    {
-                                        errorCode = ErrorCodes.InvalidMessage;
-                                    }
-                                    else
-                                    {
-                                        // m_startInputScan is set to true in CheckForCriticalParams
-                                        m_deferredResponses.Clear();
-
-                                        //CheckTriggerRearm();
-
-                                        if (m_criticalParams.OutputSampleMode == SampleMode.Continuous)
-                                        {
-                                            //if (m_onDataAvailableCallbackControl != null)
-                                            //{
-                                            //    int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
-
-                                            //    if (m_criticalParams.AiChannelCount * byteRatio * m_onDataAvailableCallbackControl.NumberOfSamples > m_internalReadBuffer.Length / 2)
-                                            //    {
-                                            //        errorCode = ErrorCodes.CallbackCountTooLarge;
-                                            //    }
-                                            //}
-                                        }
-
-                                        // release the control transfer mutex so that the deferred messages can be sent
-                                        m_platformInterop.ControlTransferMutex.ReleaseMutex();
-
-                                        if (errorCode == ErrorCodes.NoErrors)
-                                            errorCode = StartOutputScan();
-
-                                        // reaquire the control transfer mutex
-                                        m_platformInterop.ControlTransferMutex.WaitOne();
-
-                                        if (errorCode == ErrorCodes.NoErrors)
-                                        {
-                                            if (m_errorCode != ErrorCodes.NoErrors)
-                                            {
-                                                errorCode = m_errorCode;
-                                            }
-                                            else if (packet.DeferTransfer)
-                                            {
-                                                if (m_deferredResponses.Count > 0)
-                                                    m_internalReadString = m_deferredResponses[0].Trim(new char[] { Constants.NULL_TERMINATOR });
-                                                else
-                                                    System.Diagnostics.Debug.Assert(false, "Deferred response list is empty");
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            else if (m_initiateStopForInput && m_deviceInfo.EndPointIn != 0)
-                            {
-                                // release the control transfer mutex so that the Input scan thread can exit
-                                m_platformInterop.ControlTransferMutex.ReleaseMutex();
-
-                                // m_initiateStopForInput is set to true in CheckForCriticalParams
-
-                                if (m_deferredMessages.Count > 0)
-                                {
-                                    // executes on Linux
-                                    StopInputScan(false);
-                                    stopInputScanPacket = m_deferredMessages.Dequeue();
-                                    errorCode = m_platformInterop.UsbControlOutRequest(stopInputScanPacket);
-                                    m_platformInterop.FlushInputDataFromDevice();
-                                }
-                                else
-                                {
-                                    // executes on Windows
-                                    StopInputScan(true);
-                                }
-
-                                // reaquire the control transfer mutex
-                                m_platformInterop.ControlTransferMutex.WaitOne();
-                            }
-                            else if (m_initiateStopForOutput && m_deviceInfo.EndPointOut != 0)
-                            {
-                                // release the control transfer mutex so that the Input scan thread can exit
-                                m_platformInterop.ControlTransferMutex.ReleaseMutex();
-
-                                // m_initiateStopForInput is set to true in CheckForCriticalParams
-
-                                if (m_deferredMessages.Count > 0)
-                                {
-                                    // executes on Linux
-                                    StopOutputScan(false);
-                                    stopOutputScanPacket = m_deferredMessages.Dequeue();
-                                    errorCode = m_platformInterop.UsbControlOutRequest(stopOutputScanPacket);
-                                    //m_platformInterop.FlushInputDataFromDevice();
-                                }
-                                else
-                                {
-                                    // executes on Windows
-                                    StopOutputScan(true);
-                                }
-
-                                // reaquire the control transfer mutex
-                                m_platformInterop.ControlTransferMutex.WaitOne();
-                            }
+                            errorCode = m_platformInterop.UsbControlOutRequest(packet);
                         }
                     }
                 }
@@ -653,12 +879,23 @@ namespace MeasurementComputing.DAQFlex
         /// </summary>
         /// <param name="samples">The number of bytes</param>
         //======================================================================================
-        internal void SetInputBufferSize(int numberOfBytes)
+        internal ErrorCodes SetInputBufferSize(int numberOfBytes)
         {
-            int mulitplier = (int)Math.Ceiling((double)numberOfBytes / (double)m_deviceInfo.MaxPacketSize);
-            m_totalBytesToRead = Math.Max(m_deviceInfo.MaxPacketSize, mulitplier * m_deviceInfo.MaxPacketSize);
-            m_internalReadBuffer = new byte[m_totalBytesToRead];
-            m_inputBufferSizeOverride = true;
+            ScanState scanState = GetInputScanState();
+
+            if (scanState != ScanState.Running)
+            {
+                int mulitplier = (int)Math.Ceiling((double)numberOfBytes / (double)m_deviceInfo.MaxPacketSize);
+                m_totalBytesToRead = Math.Max(m_deviceInfo.MaxPacketSize, mulitplier * m_deviceInfo.MaxPacketSize);
+                m_internalReadBuffer = new byte[m_totalBytesToRead];
+                m_inputBufferSizeOverride = true;
+                return ErrorCodes.NoErrors;
+            }
+            else
+            {
+                m_errorCode = ErrorCodes.InputBufferCannotBeSet;
+                return m_errorCode;
+            }
         }
 
         //======================================================================================
@@ -667,12 +904,20 @@ namespace MeasurementComputing.DAQFlex
         /// </summary>
         /// <param name="numberOfBytes">The number of bytes</param>
         //======================================================================================
-        internal void SetOutputBufferSize(int numberOfBytes)
+        internal ErrorCodes SetOutputBufferSize(int numberOfBytes)
         {
-            int mulitplier = (int)Math.Ceiling((double)numberOfBytes / (double)m_deviceInfo.MaxPacketSize);
-            m_totalBytesToWrite = Math.Max(m_deviceInfo.MaxPacketSize, mulitplier * m_deviceInfo.MaxPacketSize);
-            m_internalWriteBuffer = new byte[m_totalBytesToWrite];
-            m_outputBufferSizeOverride = true;
+            if (m_outputScanState != ScanState.Running)
+            {
+                m_totalBytesToWrite = numberOfBytes;
+                m_internalWriteBuffer = new byte[m_totalBytesToWrite];
+                m_outputBufferSizeOverride = true;
+                return ErrorCodes.NoErrors;
+            }
+            else
+            {
+                m_errorCode = ErrorCodes.OutputBufferCannotBeSet;
+                return m_errorCode;
+            }
         }
 
         //======================================================================================
@@ -725,7 +970,7 @@ namespace MeasurementComputing.DAQFlex
         /// The number of samples per channel acquired since the scan started
         /// </summary>
         //====================================================================
-        internal long InputScanCount
+        internal ulong InputScanCount
         {
             get 
             {
@@ -741,7 +986,7 @@ namespace MeasurementComputing.DAQFlex
         /// The number of samples per channel the device received since the scan started
         /// </summary>
         //================================================================================
-        internal long OutputScanCount
+        internal ulong OutputScanCount
         {
             get
             {
@@ -787,7 +1032,7 @@ namespace MeasurementComputing.DAQFlex
         /// The number of samples per channel read since the start of the scan
         /// </summary>
         //====================================================================
-        internal int InputSamplesReadPerChannel
+        internal ulong InputSamplesReadPerChannel
         {
             get { return m_inputSamplesReadPerChannel; }
         }
@@ -889,6 +1134,7 @@ namespace MeasurementComputing.DAQFlex
         //=========================================================================================
         protected double TryConvertData(ref string response)
         {
+            string originalResponse = response;
             double value = double.NaN;
 
             string dec = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
@@ -903,21 +1149,17 @@ namespace MeasurementComputing.DAQFlex
 
                 string responseValue = response.Substring(equalIndex + 1);
 
-#if WindowsCE
-                try
-                {
-                    parsedValue = Double.Parse(responseValue);
-                    parsed = true;
-                }
-                catch (Exception)
-                {
-                }
-#else
-                parsed = Double.TryParse(responseValue, out parsedValue);
-#endif
+                parsed = PlatformParser.TryParse(responseValue, out parsedValue);
 
                 if (parsed)
+                {
                     value = parsedValue;
+                }
+                else
+                {
+                    if (originalResponse.Contains(Messages.DEV_ID.TrimEnd(new char[]{'#'})))
+                        response = originalResponse;
+                }
             }
 
             return value;
@@ -1005,13 +1247,37 @@ namespace MeasurementComputing.DAQFlex
 
         //====================================================================
         /// <summary>
+        /// Resets the input scan count and index properties
+        /// </summary>
+        //====================================================================
+        internal void ResetInputScanCount()
+        {
+            m_inputScanCount = 0;
+            m_inputScanIndex = -1;
+        }
+
+        //====================================================================
+        /// <summary>
+        /// Resets the input scan count and index properties
+        /// </summary>
+        //====================================================================
+        internal void ResetOutputScanCount()
+        {
+            m_outputScanCount = 0;
+            m_outputScanIndex = -1;
+        }
+
+        //====================================================================
+        /// <summary>
         /// Starts the input scan thread
         /// </summary>
         //====================================================================
         protected ErrorCodes StartInputScan()
         {
-            if (ValidateCriticalParams())
+            if (ValidateInputCriticalParams())
             {
+                CheckForTriggerLevelResend();
+
                 if (m_onDataAvailableCallbackControl != null)
                 {
                     if (m_criticalParams.InputSampleMode == SampleMode.Finite)
@@ -1023,16 +1289,24 @@ namespace MeasurementComputing.DAQFlex
                     }
                 }
 
+                m_errorCode = ErrorCodes.NoErrors;
+                m_inputScanErrorCode = ErrorCodes.NoErrors;
+
+                m_platformInterop.ClearError();
+                m_platformInterop.ClearInputScanError();
+
+                DebugLogger.ClearDebugList();
+                DebugLogger.StopWatch.Reset();
+                DebugLogger.StopWatch.Start();
+
                 // initialize scan variables
                 m_inputScanCount = 0;
                 m_startInputScan = false;
                 m_inputScanIndex = -1; // equivalent to UL GetStatus curIndex
                 m_currentInputScanReadIndex = 0;
                 m_lastInputScanWriteIndex = -1;
-                m_deferredMessagesSent = false;
                 m_inputSamplesReadPerChannel = 0;
                 m_inputScanComplete = false;
-                m_errorCode = ErrorCodes.NoErrors;
                 m_stopInputScan = false;
                 m_invokeCallbackCount = 0;
                 m_inputBufferFilled = false;
@@ -1042,19 +1316,65 @@ namespace MeasurementComputing.DAQFlex
                 SetADScalingCoefficients();
 
                 // start the Process Input Scan thread
+                m_inputScanStatus = ScanState.Idle;
                 m_inputScanThread = new Thread(new ThreadStart(ProcessInputScanThread));
-                m_inputScanThread.Name = "InputScanTread";
+                m_inputScanThread.Name = "InputScanThread";
                 m_inputScanThread.Start();
                 m_inputScanStarted = true;
 
-                // wait for the ProcessInputScanThread to send the actual START message to the device
-                while (!m_deferredMessagesSent)
+                // wait for the ProcessInputScanThread to send the actual START message 
+                // and set the scan state to RUNNING (or OVERRUN) to the device
+                while (m_inputScanStatus == ScanState.Idle && m_inputScanErrorCode == ErrorCodes.NoErrors && m_platformInterop.InputScanErrorCode == ErrorCodes.NoErrors)
                     Thread.Sleep(0);
+
+                if (m_inputScanErrorCode == ErrorCodes.NoErrors && m_platformInterop.InputScanErrorCode != ErrorCodes.NoErrors)
+                    m_inputScanErrorCode = m_platformInterop.InputScanErrorCode;
+            }
+            else
+            {
+                return m_errorCode;
             }
 
-            return ErrorCodes.NoErrors;
+            return m_errorCode;
         }
 
+        //=====================================================================
+        /// <summary>
+        /// Checks to see if the trigger level needs to be resent 
+        /// in case other messages sent after the AITRIG:LEVEL message
+        /// effects its scaling
+        /// </summary>
+        //=====================================================================
+        protected void CheckForTriggerLevelResend()
+        {
+            if (m_daqDevice.CriticalParams.InputTriggerEnabled &&
+                    m_daqDevice.CriticalParams.ResendInputTriggerLevelMessage &&
+                        m_daqDevice.CriticalParams.InputTriggerSource.Contains("SWSTART"))
+            {
+                // release the control transfer mutex so the trigger message can be sent
+                m_platformInterop.ControlTransferMutex.WaitOne();
+
+                UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
+                packet.Request = ControlRequest.MESSAGE_REQUEST;
+                packet.TransferType = UsbTransferTypes.ControlOut;
+                packet.Index = 0;
+                packet.Length = (ushort)packet.Buffer.Length;
+                packet.Value = 0;
+
+                string msg = Messages.AITRIG_LEVEL;
+                msg = Messages.InsertValue(msg, m_criticalParams.InputTriggerLevel);
+
+                for (int i = 0; i < msg.Length; i++)
+                    packet.Buffer[i] = (byte)msg[i];
+
+                m_errorCode = m_platformInterop.UsbControlOutRequest(packet);
+
+                // reaquire the control transfer mutex
+                m_platformInterop.ControlTransferMutex.ReleaseMutex();
+            }
+        }
+
+        
         //======================================================================================
         /// <summary>
         /// Start an output scan
@@ -1064,38 +1384,50 @@ namespace MeasurementComputing.DAQFlex
         protected ErrorCodes StartOutputScan()
         {
             m_errorCode = ErrorCodes.NoErrors;
-            m_deferredMessagesSent = false;
-            m_numberOfSamplesPerChannelWrittenToDevice = 0;
-            m_outputScanComplete = false;
-            m_outputScanCount = 0;
-            m_outputScanIndex = 0;
-            m_outputScanState = ScanState.Idle;
-            m_totalBytesReceivedByDevice = 0;
-            m_stopOutputScan = false;
+            m_outputScanErrorCode = ErrorCodes.NoErrors;
 
-            m_criticalParams.AoChannelCount = m_criticalParams.HighAoChannel - m_criticalParams.LowAoChannel + 1;
+            if (ValidateOutputCriticalParams())
+            {
+                m_platformInterop.ClearError();
+                m_platformInterop.ClearOutputScanError();
 
-            m_outputScanThread = new Thread(new ThreadStart(ProcessOutputScanThread));
-            m_outputScanThread.Name = "OutputScanThread";
-            m_outputScanThread.Start();
-            m_outputScanStarted = true;
+                m_numberOfSamplesPerChannelWrittenToDevice = 0;
+                m_outputScanComplete = false;
+                m_outputScanCount = 0;
+                m_outputScanIndex = 0;
+                m_outputScanState = ScanState.Idle;
+                m_totalBytesReceivedByDevice = 0;
+                m_stopOutputScan = false;
 
-            // wait for the ProcessInputScanThread to send the actual START message to the device
-            while (!m_deferredMessagesSent)
-                Thread.Sleep(0);
+                m_criticalParams.AoChannelCount = m_criticalParams.HighAoChannel - m_criticalParams.LowAoChannel + 1;
 
-            return ErrorCodes.NoErrors;
+                m_daqDevice.BeginOutputScan();
+
+                m_outputScanThread = new Thread(new ThreadStart(ProcessOutputScanThread));
+                m_outputScanThread.Name = "OutputScanThread";
+                m_outputScanThread.Start();
+                m_outputScanStarted = true;
+
+                // wait for the ProcessInputScanThread to send the actual START message to the device
+                while (m_outputScanState != ScanState.Running && m_outputScanErrorCode == ErrorCodes.NoErrors && m_platformInterop.ErrorCode == ErrorCodes.NoErrors)
+                    Thread.Sleep(0);
+
+                if (m_outputScanErrorCode == ErrorCodes.NoErrors && m_platformInterop.ErrorCode != ErrorCodes.NoErrors)
+                    m_outputScanErrorCode = m_platformInterop.ErrorCode;
+            }
+
+            return m_errorCode;
         }
 
         protected object queueOutputTransferLock = new object();
 
         //==========================================================================================
         /// <summary>
-        /// Checks critical params before starting the scan
+        /// Checks critical input params before starting the scan
         /// </summary>
         /// <returns>True if the params are valid otherwise false</returns>
         //==========================================================================================
-        protected bool ValidateCriticalParams()
+        protected bool ValidateInputCriticalParams()
         {
             if (m_criticalParams.LowAiChannel > m_criticalParams.HighAiChannel)
             {
@@ -1103,27 +1435,63 @@ namespace MeasurementComputing.DAQFlex
                 return false;
             }
 
-            int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
-
             if (m_criticalParams.InputSampleMode == SampleMode.Finite)
             {
-                if ((byteRatio * m_criticalParams.AiChannelCount * m_criticalParams.InputScanSamples) > m_internalReadBuffer.Length)
+                if ((m_criticalParams.DataInXferSize * m_criticalParams.AiChannelCount * m_criticalParams.InputScanSamples) > m_internalReadBuffer.Length)
                 {
                     m_errorCode = ErrorCodes.InputSamplesGreaterThanBufferSize;
                     return false;
                 }
             }
 
-            m_errorCode = m_daqDevice.Ai.ValidateSampleCount();
+            m_errorCode = m_daqDevice.Ai.ValidateScanRate();
 
             if (m_errorCode == ErrorCodes.NoErrors)
-                m_errorCode = m_daqDevice.Ai.ValidateScanRate();
+                m_errorCode = m_daqDevice.Ai.ValidateSampleCount();
+
+            if (m_errorCode == ErrorCodes.NoErrors)
+                m_errorCode = m_daqDevice.Ai.ValidateQueueConfiguration();
+
+            if (m_errorCode == ErrorCodes.NoErrors)
+                m_errorCode = m_daqDevice.Ai.ValidateAiTrigger();
 
             if (m_errorCode != ErrorCodes.NoErrors)
                 return false;
 
             return true;
         }
+
+        //==========================================================================================
+        /// <summary>
+        /// Checks critical output params before starting the scan
+        /// </summary>
+        /// <returns>True if the params are valid otherwise false</returns>
+        //==========================================================================================
+        protected bool ValidateOutputCriticalParams()
+        {
+            if (m_criticalParams.LowAoChannel > m_criticalParams.HighAoChannel)
+            {
+                m_errorCode = ErrorCodes.LowChannelIsGreaterThanHighChannel;
+                return false;
+            }
+
+            if (m_criticalParams.OutputSampleMode == SampleMode.Finite)
+            {
+                if ((m_criticalParams.DataOutXferSize * m_criticalParams.AoChannelCount * m_criticalParams.OutputScanSamples) > m_internalWriteBuffer.Length)
+                {
+                    m_errorCode = ErrorCodes.TotalNumberOfSamplesGreaterThanOutputBufferSize;
+                    return false;
+                }
+            }
+
+            m_errorCode = m_daqDevice.Ao.ValidateScanRate();
+
+            if (m_errorCode != ErrorCodes.NoErrors)
+                return false;
+
+            return true;
+        }
+
 
         //============================================================================================
         /// <summary>
@@ -1149,8 +1517,12 @@ namespace MeasurementComputing.DAQFlex
                         double scale = ac.UpperLimit - ac.LowerLimit;
 
                         if (ac.LowerLimit < 0)
-                            offset = -1.0 * (scale / 2.0);
-
+                        {
+                            if (m_daqDevice.CriticalParams.AiDataIsSigned)
+                                offset = 0;
+                            else
+                                offset = -1.0 * (scale / 2.0);
+                        }
                         double lsb = scale / Math.Pow(2.0, m_criticalParams.AiDataWidth);
 
                         if (m_criticalParams.CalibrateAiData)
@@ -1277,17 +1649,16 @@ namespace MeasurementComputing.DAQFlex
             // retrieve the delegate
             StopOutputScanDelegate caller = (StopOutputScanDelegate)ar.AsyncState;
 
-            // Call EndIinvoke 
+            // Call EndInvoke 
             caller.EndInvoke(ar);
         }
 
         //========================================================================
         /// <summary>
         /// Transmits any messages that have been deferred such as "AISCAN:START"
-        /// or "AOSCAN:START"
         /// </summary>
         //========================================================================
-        protected void TransmitDeferredMessages()
+        protected void TransmitDeferredInputMessages()
         {
             UsbSetupPacket messagePacket = null;
 
@@ -1295,16 +1666,43 @@ namespace MeasurementComputing.DAQFlex
 
             do
             {
-                if (m_deferredMessages.Count > 0)
-                    messagePacket = m_deferredMessages.Dequeue();
+                if (m_deferredInputMessages.Count > 0)
+                    messagePacket = m_deferredInputMessages.Dequeue();
 
                 if (messagePacket != null)
                 {
                     m_platformInterop.UsbControlOutRequest(messagePacket);
-                    m_deferredResponses.Add(m_ae.GetString(messagePacket.Buffer, 0, messagePacket.Buffer.Length).Trim(new char[] {Constants.NULL_TERMINATOR}));
+                    m_deferredInputResponses.Add(m_ae.GetString(messagePacket.Buffer, 0, messagePacket.Buffer.Length).Trim(new char[] {Constants.NULL_TERMINATOR}));
                 }
 
-            } while (messagePacket != null && m_deferredMessages.Count > 0);
+            } while (messagePacket != null && m_deferredInputMessages.Count > 0);
+
+            m_platformInterop.ControlTransferMutex.ReleaseMutex();
+        }
+
+        //========================================================================
+        /// <summary>
+        /// Transmits any messages that have been deferred such as "AOSCAN:START"
+        /// </summary>
+        //========================================================================
+        protected void TransmitDeferredOutputMessages()
+        {
+            UsbSetupPacket messagePacket = null;
+
+            m_platformInterop.ControlTransferMutex.WaitOne();
+
+            do
+            {
+                if (m_deferredOutputMessages.Count > 0)
+                    messagePacket = m_deferredOutputMessages.Dequeue();
+
+                if (messagePacket != null)
+                {
+                    m_platformInterop.UsbControlOutRequest(messagePacket);
+                    m_deferredOutputResponses.Add(m_ae.GetString(messagePacket.Buffer, 0, messagePacket.Buffer.Length).Trim(new char[] { Constants.NULL_TERMINATOR }));
+                }
+
+            } while (messagePacket != null && m_deferredOutputMessages.Count > 0);
 
             m_platformInterop.ControlTransferMutex.ReleaseMutex();
         }
@@ -1318,7 +1716,7 @@ namespace MeasurementComputing.DAQFlex
         //====================================================================
         protected void ProcessInputScanThread()
         {
-            System.Diagnostics.Debug.Assert(m_criticalParams.InputXferSize != 0);
+            System.Diagnostics.Debug.Assert(m_criticalParams.BulkInXferSize != 0);
 
             bool usingInternalBuffer = true;
 
@@ -1334,8 +1732,6 @@ namespace MeasurementComputing.DAQFlex
             int triggerRearmByteCount = 0;
             int readBufferLength;
             int callbackCount = 0;
-            int availableSamplesForCallbackPerChannel = 0;
-            int callbackSamples = 0;
             int rearmTriggerCount = 0;
 
             m_availableSamplesForCallbackSinceStartOfScan = 0;
@@ -1358,14 +1754,13 @@ namespace MeasurementComputing.DAQFlex
             }
 
             // get the buffer size that the platform interop object calculates from the scan rate
-            int optimalBufferSize = m_criticalParams.InputXferSize;
+            int optimalBufferSize = m_criticalParams.BulkInXferSize;
 
-            int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
             int channelCount = m_criticalParams.AiChannelCount;
 
-            m_totalBytesToRead = channelCount * (byteRatio * m_criticalParams.InputScanSamples);
+            m_totalBytesToRead = channelCount * (m_criticalParams.DataInXferSize * m_criticalParams.InputScanSamples);
 
-            if (m_criticalParams.InputSampleMode == SampleMode.Continuous)
+            if (m_criticalParams.InputSampleMode == SampleMode.Continuous && !m_inputBufferSizeOverride)
                 m_internalReadBuffer = new byte[2 * m_totalBytesToRead];
 
             if (usingInternalBuffer)
@@ -1374,39 +1769,42 @@ namespace MeasurementComputing.DAQFlex
                 readBufferLength = m_externalReadBufferSize;
 
             if (m_totalBytesToRead < optimalBufferSize)
+            {
                 optimalBufferSize = m_totalBytesToRead;
+                m_criticalParams.BulkInXferSize = optimalBufferSize;
+            }
 
-            // for WinUSB buffer size needs to be a mulitple of the max packet size in order to use RAW_IO
+            // give the device an opportunity to do device-specific stuff before starting
+            m_daqDevice.BeginInputScan();
+
             if (m_criticalParams.InputTransferMode == TransferMode.SingleIO)
             {
                 // single sample only
-                optimalBufferSize = byteRatio * channelCount;
-            }
-            else if (Environment.OSVersion.Platform != PlatformID.Unix &&
-                     Environment.OSVersion.Platform != PlatformID.WinCE)
-            {
-                optimalBufferSize = (int)Math.Ceiling((double)optimalBufferSize / (double)m_criticalParams.InputPacketSize) * m_criticalParams.InputPacketSize;
+                optimalBufferSize = m_criticalParams.DataInXferSize * m_criticalParams.NumberOfSamplesForSingleIO;
+                m_criticalParams.BulkInXferSize = optimalBufferSize;
             }
 
             // the platform interop object will allocate and return the bulk read buffer
             m_bulkReadBuffer = null;
 
+            //// give the device an opportunity to do device-specific stuff before starting
+            //m_daqDevice.BeginInputScan();
+
             // this will queue one or more bulk in requests if the interop object supports asynchronous I/O
             m_platformInterop.PrepareInputTransfers(m_criticalParams.InputScanRate,
                                                     m_totalBytesToRead,
                                                     optimalBufferSize);
-
+            
             // this will start the device scan
-            TransmitDeferredMessages();
-
-            m_deferredMessagesSent = true;
+            TransmitDeferredInputMessages();
 
             int numberOfBulkTransfersToExecute;
             uint bytesReceivedInCurrentTransfer = 0;
             uint totalBytesTransfered = 0;
             uint bytesToTransfer = 0;
+            int deltaBytes = 0;
 
-            while (ContinueProcessingInputScan(m_errorCode))
+            while (ContinueProcessingInputScan(m_inputScanErrorCode))
             {
                 bytesReceivedInCurrentTransfer = 0;
                 totalBytesTransfered = 0;
@@ -1421,7 +1819,7 @@ namespace MeasurementComputing.DAQFlex
                 {
                     // calculate the number of bytes to process in this transfer
                     if (m_criticalParams.InputTransferMode == TransferMode.SingleIO)
-                        bytesToTransfer = (uint)(byteRatio * channelCount);
+                        bytesToTransfer = (uint)(m_criticalParams.DataInXferSize * m_criticalParams.NumberOfSamplesForSingleIO);
                     else
                         bytesToTransfer = (uint)Math.Min(optimalBufferSize, (m_totalBytesToRead - (int)totalBytesTransfered));
 
@@ -1435,14 +1833,14 @@ namespace MeasurementComputing.DAQFlex
                     //*********************************************************************************************************
                     // Read the data on the bulk in pipe
                     //*********************************************************************************************************
-                    m_errorCode = m_platformInterop.UsbBulkInRequest(ref m_bulkReadBuffer, ref bytesReceivedInCurrentTransfer);
+                    m_inputScanErrorCode = m_platformInterop.UsbBulkInRequest(ref m_bulkReadBuffer, ref bytesReceivedInCurrentTransfer);
 
                     // update the total number of bytes received
-                    m_totalBytesReceived += (int)bytesReceivedInCurrentTransfer;
+                    m_totalBytesReceived += (ulong)bytesReceivedInCurrentTransfer;
 
                     // m_bulkInReadBuffer could be null if the input scan was stopped with the Stop command
 
-                    if (m_errorCode == (int)ErrorCodes.NoErrors && m_bulkReadBuffer != null)
+                    if (m_inputScanErrorCode == (int)ErrorCodes.NoErrors && m_bulkReadBuffer != null)
                     {
                         // update the total number of bytes transfered so far
                         totalBytesTransfered += bytesReceivedInCurrentTransfer;
@@ -1453,11 +1851,11 @@ namespace MeasurementComputing.DAQFlex
                             {
                                 triggerRearmByteCount += (int)bytesToTransfer;
 
-                                if (triggerRearmByteCount >= (byteRatio * channelCount * m_criticalParams.DeviceInputSampleCount))
+                                if (triggerRearmByteCount >= (m_criticalParams.DataInXferSize * channelCount * m_criticalParams.AdjustedRearmSamplesPerTrigger))
                                 {
                                     rearmTriggerCount++;
-                                    bytesToTransfer -= (uint)(byteRatio * channelCount * m_criticalParams.DeltaRearmInputSamples);
-                                    m_totalBytesReceived -= byteRatio * channelCount * m_criticalParams.DeltaRearmInputSamples;
+                                    bytesToTransfer -= (uint)(m_criticalParams.DataInXferSize * channelCount * m_criticalParams.DeltaRearmInputSamples);
+                                    m_totalBytesReceived -= (ulong)(m_criticalParams.DataInXferSize * channelCount * m_criticalParams.DeltaRearmInputSamples);
                                     triggerRearmByteCount = 0;
                                 }
                             }
@@ -1465,14 +1863,25 @@ namespace MeasurementComputing.DAQFlex
                             // upate the number of samples acquired so far per channel
                             lock (m_inputScanCountLock)
                             {
-                                m_inputScanCount = (m_totalBytesReceived / byteRatio) / channelCount;
+                                m_inputScanCount = (m_totalBytesReceived / (ulong)m_criticalParams.DataInXferSize) / (ulong)channelCount;
+
+                                if (m_criticalParams.InputScanOverwrite)
+                                {
+                                    deltaBytes = m_criticalParams.DataInXferSize * (int)(m_inputScanCount - m_inputSamplesReadPerChannel);
+
+                                    if (deltaBytes > readBufferLength)
+                                    {
+                                        m_inputScanErrorCode = ErrorCodes.InputBufferOverrun;
+                                        continue;
+                                    }
+                                }
                             }
 
-                            // update values used for the callback method
-                            availableSamplesForCallbackPerChannel = (int)m_inputScanCount - m_inputSamplesReadPerChannel;
-                            availableSamplesForCallbackPerChannel = Math.Min(m_internalReadBuffer.Length / (channelCount * byteRatio), availableSamplesForCallbackPerChannel);
-                            callbackCount += ((int)bytesReceivedInCurrentTransfer / byteRatio) / channelCount;
-
+                            if (m_criticalParams.InputTransferMode == TransferMode.SingleIO)
+                                callbackCount += ((int)bytesReceivedInCurrentTransfer / m_criticalParams.DataInXferSize) / m_criticalParams.NumberOfSamplesForSingleIO;
+                            else
+                                callbackCount += ((int)bytesReceivedInCurrentTransfer / m_criticalParams.DataInXferSize) / channelCount;
+                            
                             if (usingInternalBuffer)
                             {
                                 int bytesToCopyOnFirstPass;
@@ -1510,47 +1919,32 @@ namespace MeasurementComputing.DAQFlex
                                 }
                             }
 
-                            // calculate current index
-                            m_inputScanIndex = m_inputScanCount;
-
-                            if (m_inputScanIndex >= (readBufferLength / byteRatio))
-                                m_inputScanIndex = m_inputScanCount % (readBufferLength / byteRatio);
+                            // calculate current index (some devices in SINGLEIO mode only transfer one channel per packet and the second calculation will always return 0)
+                            if (m_criticalParams.InputTransferMode == TransferMode.SingleIO)
+                                m_inputScanIndex = (long)Math.Max(0, (m_inputScanCount % (ulong)(readBufferLength / m_criticalParams.DataInXferSize)) - 1);
+                            else
+                                m_inputScanIndex = (long)Math.Max(0, (m_inputScanCount % (ulong)(readBufferLength / m_criticalParams.DataInXferSize)) - (ulong)channelCount);
 
                             // add the m_bulkReadBuffer to the ready buffers queue so it may be reused
                             m_platformInterop.QueueBulkInReadyBuffers(m_bulkReadBuffer, QueueAction.Enqueue);
                         }
                         catch (Exception ex)
                         {
-                            System.Windows.Forms.MessageBox.Show(ex.Message);
-                            m_errorCode = ErrorCodes.UnknownError;
+                            System.Diagnostics.Debug.Assert(false, ex.Message);
+                            m_inputScanErrorCode = ErrorCodes.UnknownError;
                         }
 
                         //*****************************************************************************************
                         // OnDataAvailable callback
                         //*****************************************************************************************
-                        if (m_errorCode == ErrorCodes.NoErrors)
+                        if (m_inputScanErrorCode == ErrorCodes.NoErrors)
                         {
                             if (m_onDataAvailableCallbackControl != null && m_onDataAvailableCallbackControl.Created)
                             {
-                                if (callbackCount >= m_onDataAvailableCallbackControl.NumberOfSamples)
+                                if (m_criticalParams.InputSampleMode == SampleMode.Finite)
                                 {
-                                    callbackSamples = availableSamplesForCallbackPerChannel;
-
-                                    m_availableSamplesForCallbackSinceStartOfScan += callbackCount;
-                                    callbackCount = 0;
-
-                                    if (callbackSamples > 0)
-                                    {
-                                        QueueCallbackInfo(callbackSamples, m_inputSamplesReadPerChannel, QueueAction.Enqueue);
-                                    }
-                                }
-                                else
-                                {
-                                    if (m_criticalParams.InputSampleMode == SampleMode.Finite)
-                                    {
-                                        if (m_totalBytesReceived >= m_totalBytesToRead && callbackCount > 0)
-                                            TerminateCallbacks = true;
-                                    }
+                                    if (m_totalBytesReceived >= (ulong)m_totalBytesToRead && m_totalBytesReceived > 0)
+                                        TerminateCallbacks = true;
                                 }
                             }
                         }
@@ -1560,29 +1954,59 @@ namespace MeasurementComputing.DAQFlex
                 //*****************************************************************************************
                 // OnInputScanError callback
                 //*****************************************************************************************
-                if (m_errorCode != ErrorCodes.NoErrors)
+                if (m_inputScanErrorCode != ErrorCodes.NoErrors)
                 {
                     m_callbackInfoQueue.Clear();
                     TerminateCallbacks = true;
 
                     if (m_onInputScanErrorCallbackControl != null && m_onInputScanErrorCallbackControl.Created)
                     {
+                        if (m_inputScanErrorCode == ErrorCodes.DataOverrun)
+                            m_inputScanStatus = ScanState.Overrun;
+                        else
+                            m_inputScanStatus = ScanState.Idle;
+
+                        m_errorCode = m_inputScanErrorCode;
                         m_invokeCallbackCount++;
-                        m_onInputScanErrorCallbackControl.BeginInvoke(m_onInputScanErrorCallback, m_scanErrorCallbackParam);
+
+                        if (m_onInputScanErrorCallbackControl.ExecuteOnUIThread)
+                        {
+                            m_scanErrorCallbackParam[0] = (int)(InputScanCount - InputSamplesReadPerChannel);
+                            m_onInputScanErrorCallbackControl.BeginInvoke(m_onInputScanErrorCallback, m_scanErrorCallbackParam);
+                        }
+                        else
+                        {
+                            Thread errorCallbackThread = new Thread(new ThreadStart(ProcessErrorCallbackThread));
+                            errorCallbackThread.Start();
+                        }
                     }
                 }
 
                 Thread.Sleep(1);
             }
 
-            m_inputScanStatus = ScanState.Idle;
+            while (!m_platformInterop.InputScanComplete())
+                Thread.Sleep(0);
+
+            DebugLogger.WriteLine("Input scan complete");
+            DebugLogger.StopWatch.Stop();
+
+            if (m_inputScanErrorCode == ErrorCodes.DataOverrun)
+                m_inputScanStatus = ScanState.Overrun;
+            else
+                m_inputScanStatus = ScanState.Idle;
+
             m_inputScanComplete = true;
             m_inputScanStarted = false;
+
+            // give the device an opportunity to do device-specific stuff before stopping
+            // THIS MUST BE DONE AFTER m_inputScanStatus HAS BEEN SET 
+            m_daqDevice.EndInputScan();
 
             if (m_onDataAvailableCallbackControl != null)
             {
                 // if this is finite mode and a normal end of scan, then let the callback thread complete
-                if (m_criticalParams.InputSampleMode == SampleMode.Finite && !m_stopInputScan && m_errorCode == ErrorCodes.NoErrors)
+                if (m_criticalParams.InputSampleMode == SampleMode.Finite && !m_stopInputScan && m_inputScanErrorCode == ErrorCodes.NoErrors)
                 {
                     if (m_callbackThread != null)
                         m_callbackThread.Join();
@@ -1603,16 +2027,75 @@ namespace MeasurementComputing.DAQFlex
             //*****************************************************************************************
             if (m_onInputScanCompleteCallbackControl != null && m_onInputScanCompleteCallbackControl.Created)
             {
-                int samplesPerChannelRead = m_currentInputScanReadIndex / (byteRatio * channelCount);
-
-                if (m_criticalParams.InputSampleMode == SampleMode.Finite && !m_stopInputScan)
-                    m_scanCompleteCallbackParam[0] = m_totalSamplesToReadPerChannel - samplesPerChannelRead;
-                else
-                    m_scanCompleteCallbackParam[0] = availableSamplesForCallbackPerChannel;
-
+                m_errorCode = m_inputScanErrorCode;
                 m_invokeCallbackCount++;
-                m_onInputScanCompleteCallbackControl.BeginInvoke(m_onInputScanCompleteCallback, m_scanCompleteCallbackParam);
+
+                //DebugLogger.WriteLine("Invoking ScanComplete callback - {0} samples", availableSamplesForCallbackPerChannel);
+                //DebugLogger.WriteLine("   Input samples read per channel = {0}", InputSamplesReadPerChannel);
+                //DebugLogger.WriteLine("   Input scan count = {0}", InputScanCount);
+
+                if (m_onInputScanCompleteCallbackControl.ExecuteOnUIThread)
+                {
+                    int samplesPerChannelRead = m_currentInputScanReadIndex / (m_criticalParams.DataInXferSize * channelCount);
+
+                    if (m_criticalParams.InputSampleMode == SampleMode.Finite && !m_stopInputScan)
+                        m_scanCompleteCallbackParam[0] = m_totalSamplesToReadPerChannel - samplesPerChannelRead;
+                    else
+                        m_scanCompleteCallbackParam[0] = (int)(InputScanCount - InputSamplesReadPerChannel);
+
+                    m_onInputScanCompleteCallbackControl.BeginInvoke(m_onInputScanCompleteCallback, m_scanCompleteCallbackParam);
+                }
+                else
+                {
+#if !WindowsCE
+                    Thread scanCompleteCallbackThread = new Thread(new ParameterizedThreadStart(ProcessScanCompleteCallbackThread));
+                    scanCompleteCallbackThread.Start(channelCount);
+#endif
+                }
             }
+
+            //DebugLogger.DumpDebugInfo();
+
+            m_errorCode = m_inputScanErrorCode;
+
+            // set the DaqDevice's pending error so that it can handle it on the next message sent
+            if (m_errorCode != ErrorCodes.NoErrors && m_errorCode != ErrorCodes.DataOverrun)
+                m_daqDevice.SetPendingInputScanError(m_errorCode);
+        }
+
+        //===============================================================================================================================
+        /// <summary>
+        /// This invokes the scan error callback method when it's not called on the UI thread
+        /// </summary>
+        //===============================================================================================================================
+        protected void ProcessErrorCallbackThread()
+        {
+            Monitor.Enter(m_callbackLock);
+            m_scanErrorCallbackParam[0] = (int)(InputScanCount - InputSamplesReadPerChannel);
+            DebugLogger.WriteLine("Raising error callback - {0} samples", m_scanErrorCallbackParam[0]);
+            m_onInputScanErrorCallbackControl.NotifyApplication((int)m_scanErrorCallbackParam[0]);
+            Monitor.Exit(m_callbackLock);
+        }
+
+        //===============================================================================================================================
+        /// <summary>
+        /// This invokes the scan complete callback method when it's not called on the UI thread
+        /// </summary>
+        //===============================================================================================================================
+        protected void ProcessScanCompleteCallbackThread(object channelCount)
+        {
+            Monitor.Enter(m_callbackLock);
+
+            int samplesPerChannelRead = m_currentInputScanReadIndex / (m_criticalParams.DataInXferSize * (int)channelCount);
+
+            if (m_criticalParams.InputSampleMode == SampleMode.Finite && !m_stopInputScan)
+                m_scanCompleteCallbackParam[0] = m_totalSamplesToReadPerChannel - samplesPerChannelRead;
+            else
+                m_scanCompleteCallbackParam[0] = (int)(InputScanCount - InputSamplesReadPerChannel);
+
+            DebugLogger.WriteLine("Raising scan complete callback - {0} samples", m_scanCompleteCallbackParam[0]);
+            m_onInputScanCompleteCallbackControl.NotifyApplication((int)m_scanCompleteCallbackParam[0]);
+            Monitor.Exit(m_callbackLock);
         }
 
         //===============================================================================================================================
@@ -1624,8 +2107,6 @@ namespace MeasurementComputing.DAQFlex
         {
             IAsyncResult asyncCallbackResult;
             object[] callbackParam = new object[1];
-            int samplesReadPerChannel;
-            int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
             int channelCount = m_criticalParams.AiChannelCount;
             int availableSamplesPerChannel;
             int samplesSentToCallbackPerChannel = 0;
@@ -1634,54 +2115,50 @@ namespace MeasurementComputing.DAQFlex
                    ((m_criticalParams.InputSampleMode == SampleMode.Continuous) ||
                     (m_criticalParams.InputSampleMode == SampleMode.Finite && samplesSentToCallbackPerChannel < m_criticalParams.InputScanSamples)))
             {
-                CallbackInfo ci = QueueCallbackInfo(0, 0, QueueAction.Dequeue);
+                    availableSamplesPerChannel = (int)(InputScanCount - InputSamplesReadPerChannel);
 
-                if (ci != null)
-                {
-                    availableSamplesPerChannel = ci.AvailableSamplesPerChannel;
-
-                    if (availableSamplesPerChannel > 0)
+                    if (availableSamplesPerChannel >= m_onDataAvailableCallbackControl.NumberOfSamples)
                     {
-                        // use the current scan index, byte ratio and channel count to calculate
-                        // the number of samples read per channel
-                        samplesReadPerChannel = m_currentInputScanReadIndex / (byteRatio * channelCount);
-
-                        // if more samples were read after ci was queued then we'll need to adjust the
-                        // available samples.
-                        if (samplesReadPerChannel > ci.SamplesReadPerChannel)
-                            availableSamplesPerChannel = samplesReadPerChannel - ci.SamplesReadPerChannel;
-
-                        samplesSentToCallbackPerChannel = availableSamplesPerChannel + samplesReadPerChannel;
-
-                        // set the callback param to the number of available samples
                         callbackParam[0] = availableSamplesPerChannel;
 
-                        // Asyncronously invoke the callback
                         if (m_onDataAvailableCallbackControl != null)
                         {
-                            asyncCallbackResult = m_onDataAvailableCallbackControl.BeginInvoke(m_onDataAvailableCallback, callbackParam);
-
-                            while (!asyncCallbackResult.IsCompleted)
+                            if (m_onDataAvailableCallbackControl.ExecuteOnUIThread)
                             {
-                                // wait for the callback to complete or abort
-                                if (TerminateCallbacks)
+                                DebugLogger.WriteLine("Raising data available callback - {0} samples available ", callbackParam[0]);
+                                asyncCallbackResult = m_onDataAvailableCallbackControl.BeginInvoke(m_onDataAvailableCallback, callbackParam);
+
+                                while (!asyncCallbackResult.IsCompleted)
                                 {
-                                    m_onDataAvailableCallbackControl.Abort = true;
-                                    break;
+                                    // wait for the callback to complete or abort
+                                    if (TerminateCallbacks)
+                                    {
+                                        m_onDataAvailableCallbackControl.Abort = true;
+                                        break;
+                                    }
+
+                                    Thread.Sleep(1);
                                 }
 
-                                Thread.Sleep(0);
-                            }
+                                DebugLogger.WriteLine("Data available callback complete");
 
-                            if (!TerminateCallbacks)
+                                if (!TerminateCallbacks)
+                                {
+                                    // complete callback invocation
+                                    if (m_onDataAvailableCallbackControl != null)
+                                        m_onDataAvailableCallbackControl.EndInvoke(asyncCallbackResult);
+                                }
+                            }
+                            else
                             {
-                                // complete callback invocation
-                                if (m_onDataAvailableCallbackControl != null)
-                                    m_onDataAvailableCallbackControl.EndInvoke(asyncCallbackResult);
+                                Monitor.Enter(m_callbackLock);
+                                DebugLogger.WriteLine("Raising data available callback - {0} samples available ", callbackParam[0]);
+                                m_onDataAvailableCallbackControl.NotifyApplication((int)callbackParam[0]);
+                                DebugLogger.WriteLine("Data available callback complete");
+                                Monitor.Exit(m_callbackLock);
                             }
                         }
                     }
-                }
 
                 if (m_onDataAvailableCallbackControl == null)
                     break;
@@ -1722,7 +2199,7 @@ namespace MeasurementComputing.DAQFlex
             }
             catch (Exception)
             {
-                m_errorCode = ErrorCodes.InternalReadBufferError;
+                m_inputScanErrorCode = ErrorCodes.InternalReadBufferError;
             }
         }
 
@@ -1759,7 +2236,7 @@ namespace MeasurementComputing.DAQFlex
                 }
                 catch (Exception)
                 {
-                    m_errorCode = ErrorCodes.ErrorWritingDataToExternalInputBuffer;
+                    m_inputScanErrorCode = ErrorCodes.ErrorWritingDataToExternalInputBuffer;
                 }
             }
         }
@@ -1784,7 +2261,23 @@ namespace MeasurementComputing.DAQFlex
             {
                 if (!m_stopInputScan)
                 {
+                    UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
+                    packet.TransferType = UsbTransferTypes.ControlOut;
+                    packet.Request = ControlRequest.MESSAGE_REQUEST;
+                    packet.Index = 0;
+                    packet.Value = 0;
+                    packet.Length = (ushort)m_aiScanStopMessage.Length;
+                    Array.Copy(m_aiScanStopMessage, packet.Buffer, m_aiScanStopMessage.Length);
+
+                    // send the status message
+                    m_platformInterop.ControlTransferMutex.WaitOne();
+
+                    m_platformInterop.UsbControlOutRequest(packet);
+
+                    m_platformInterop.ControlTransferMutex.ReleaseMutex();
+
                     m_platformInterop.StopInputTransfers();
+
                     m_stopInputScan = true;
                 }
 
@@ -1793,7 +2286,7 @@ namespace MeasurementComputing.DAQFlex
 
             if (m_criticalParams.InputSampleMode == SampleMode.Finite && 
                 m_totalBytesReceived >= 0 &&
-                m_totalBytesReceived >= m_totalBytesToRead)
+                m_totalBytesReceived >= (ulong)m_totalBytesToRead)
             {
                 // we need to stop all threads that were set up to
                 // submit bulk in transfers                
@@ -1826,74 +2319,132 @@ namespace MeasurementComputing.DAQFlex
             if (m_internalWriteBuffer == null || m_internalWriteBuffer.Length == 0)
                 m_errorCode = ErrorCodes.OutputBufferNullOrEmtpy;
 
-            int transferSize = m_criticalParams.OutputXferSize;
-            int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AoDataWidth / (double)Constants.BITS_PER_BYTE);
+            bool outputTriggerred = false;
+            string triggerResponse;
+            int statusSleepTime;
+            int transferSize = m_criticalParams.BulkOutXferSize;
             int channelCount = m_criticalParams.AoChannelCount;
-            m_totalBytesToWrite = (byteRatio * channelCount * m_criticalParams.OutputScanSamples);
+            int outputBufferSampleSize = m_internalWriteBuffer.Length / m_criticalParams.DataOutXferSize;
+            int whileSleepTime = (int)((1000.0 * BULK_OUT_XFER_TIME) / 2.0);
+
+			m_platformInterop.ReadyToSubmitRemainingOutputTransfers = false;
+
+            // check the transfer size against the write buffer and adjust it if necessary
+            if (transferSize > m_internalWriteBuffer.Length)
+            {
+                m_criticalParams.BulkOutXferSize = m_internalWriteBuffer.Length;
+                transferSize = m_criticalParams.BulkInXferSize;
+            }
+
+            // m_criticalParams.BulkOutXferSize is the number of bytes submitted to each transfer
+            // m_criticalParams.DataOutXferSize is the number of bytes per sample per channel that the device sends for each transfer
+
+            if (m_criticalParams.OutputSampleMode == SampleMode.Continuous)
+            {
+                statusSleepTime = (int)Math.Max(1, m_criticalParams.OutputScanRate / 10);
+                m_criticalParams.OutputScanSamples = transferSize / (m_criticalParams.DataOutXferSize * channelCount);
+            }
+            else
+            {
+                statusSleepTime = (int)(((1.0 / m_criticalParams.OutputScanRate) * m_criticalParams.OutputScanSamples) * 100.0);
+                statusSleepTime = Math.Max(1, statusSleepTime);
+            }
+
+            statusSleepTime = (int)Math.Min(statusSleepTime, 100);
+
+            m_totalBytesToWrite = (m_criticalParams.DataOutXferSize * channelCount * m_criticalParams.OutputScanSamples);
 
             m_platformInterop.DriverInterfaceOutputBuffer = m_internalWriteBuffer;
 
-			m_platformInterop.ReadyToSubmitRemainingOutputTransfers = false;
-			
-            m_platformInterop.PrepareOutputTransfers(m_criticalParams.OutputScanRate, m_totalBytesToWrite, transferSize);
+            if (m_outputScanErrorCode == ErrorCodes.NoErrors)
+            {
+                m_platformInterop.PrepareOutputTransfers(m_criticalParams.OutputScanRate, m_totalBytesToWrite, transferSize);
 
-			while (!m_platformInterop.ReadyToStartOutputScan)
-			{
-				Thread.Sleep(1);
-			}
-			
-            TransmitDeferredMessages();
-			
-			m_platformInterop.ReadyToSubmitRemainingOutputTransfers = true;
+                // wait for data to be written to the FIFO if transfer size is less than the FIFO size
+                while (!m_platformInterop.ReadyToStartOutputScan)
+                {
+                    Thread.Sleep(1);
+                }
 
-            m_deferredMessagesSent = true;
+                // this will start the output scan
+                TransmitDeferredOutputMessages();
+
+                m_platformInterop.ReadyToSubmitRemainingOutputTransfers = true;
+            }
 
             do
             {
-                if (m_outputScanState != ScanState.Running)
-                    m_outputScanState = ScanState.Running;
-
-                if (m_platformInterop.ErrorCode == ErrorCodes.NoErrors)
+                if (m_outputScanErrorCode == ErrorCodes.NoErrors)
                 {
-                    m_totalBytesReceivedByDevice = m_platformInterop.TotalBytesReceivedByDevice;
-
-                    m_currentOutputScanOutputIndex = (m_totalBytesReceivedByDevice - 1) % m_internalWriteBuffer.Length;
-
-                    // update count and index
-                    m_outputScanCount = m_totalBytesReceivedByDevice / (byteRatio * channelCount);
-                    m_outputScanIndex = m_currentOutputScanOutputIndex / (byteRatio * channelCount);
-                }
-                else
-                {
-                    m_errorCode = m_platformInterop.CheckUnderrun();
-
-                    if (m_errorCode == ErrorCodes.DataUnderrun)
+                    if (!outputTriggerred)
                     {
-                        m_platformInterop.ClearDataUnderrun();
-                        m_outputScanState = ScanState.Underrun;
+                        TransferMessageDirect(m_aoStatusMessage);
+                        triggerResponse = ReadStringDirect();
+
+                        if (triggerResponse.Contains(PropertyValues.RUNNING))
+                            outputTriggerred = true;
                     }
+
+                    if (m_outputScanState != ScanState.Running)
+                        m_outputScanState = ScanState.Running;
+
+                    if (m_platformInterop.OutputScanErrorCode == ErrorCodes.NoErrors)
+                    {
+                        m_totalBytesReceivedByDevice = m_platformInterop.TotalBytesReceivedByDevice;
+
+                        m_currentOutputScanOutputIndex = (m_totalBytesReceivedByDevice - 1) % m_internalWriteBuffer.Length;
+
+                        // update count and index
+                        if (outputTriggerred)
+                        {
+                            m_outputScanCount = (ulong)(m_totalBytesReceivedByDevice / (m_criticalParams.DataOutXferSize * channelCount));
+
+                            if (m_outputScanCount > (ulong)outputBufferSampleSize)
+                                m_outputScanIndex = (long)Math.Max(-1, ((long)m_outputScanCount % (long)(m_internalWriteBuffer.Length / (long)m_criticalParams.DataOutXferSize)) - (long)channelCount);
+                            else
+                                m_outputScanIndex = (long)Math.Max(-1, (long)m_outputScanCount - (long)channelCount);
+                        }
+                    }
+                    else
+                    {
+                        m_outputScanErrorCode = m_platformInterop.OutputScanErrorCode;
 #if !WindowsCE
-                    m_stopOutputScanDelegate.BeginInvoke(m_stopOutputScanCallback, m_stopOutputScanDelegate);
+                        m_stopOutputScanDelegate.BeginInvoke(m_stopOutputScanCallback, m_stopOutputScanDelegate);
 #endif
+                    }
+
+                    Thread.Sleep(whileSleepTime);
                 }
 
-                Thread.Sleep(0);
+            } while (ContinueProcessingOutputScan(m_outputScanErrorCode));
 
-            } while (ContinueProcessingOutputScan(m_errorCode));
+            while (!m_platformInterop.OutputScanComplete() && m_outputScanErrorCode == ErrorCodes.NoErrors)
+                Thread.Sleep(0);
 
             // at this point all data has been accepted by the device for a finite scan
             // or the scan has been stopped so now wait for the actual device to go idle
             while (m_outputScanState == ScanState.Running)
             {
                 m_outputScanState = GetOutputScanState();
-                Thread.Sleep(1);
+                Thread.Sleep(statusSleepTime);
             }
 
-            //if (m_outputScanState == ScanState.Running)
-            //    m_outputScanState = ScanState.Idle;
+            if (m_outputScanErrorCode == ErrorCodes.DataUnderrun)
+                m_outputScanState = ScanState.Underrun;
+            else
+                m_outputScanState = ScanState.Idle;
+
+            if (m_outputScanState == ScanState.Underrun)
+                m_platformInterop.ClearDataUnderrun();
 
             m_currentOutputScanWriteIndex = 0;
-            m_outputScanComplete = true;
+            m_outputScanComplete=  true;
+
+            m_errorCode = m_outputScanErrorCode;
+
+            // set the DaqDevice's pending error so that it can handle it on the next message sent
+            if (m_errorCode != ErrorCodes.NoErrors && m_errorCode != ErrorCodes.DataUnderrun)
+                m_daqDevice.SetPendingOutputScanError(m_errorCode);
         }
 
         //=================================================================
@@ -1907,7 +2458,7 @@ namespace MeasurementComputing.DAQFlex
             if (m_stopOutputScan)
                 return false;
 
-            if (m_errorCode != ErrorCodes.NoErrors)
+            if (errorCode != ErrorCodes.NoErrors)
                 return false;
 
             if (m_criticalParams.OutputSampleMode == SampleMode.Finite &&
@@ -1939,18 +2490,94 @@ namespace MeasurementComputing.DAQFlex
             return m_internalReadValue;
         }
 
-         //===================================================================================================
+        //===============================================================================
         /// <summary>
-        /// Reads a device's memory
+        /// Returns the last device response as a string
         /// </summary>
-        /// <param name="offset">The starting addresss</param>
-        /// <param name="count">The number of bytes to read</param>
-        /// <param name="buffer">The buffer containing the memory contents</param>
-        /// <returns>The error code</returns>
-        //===================================================================================================
-        internal ErrorCodes ReadDeviceMemory(ushort offset, byte count, out byte[] buffer)
+        /// <returns>The device response</returns>
+        //===============================================================================
+        internal string ReadStringDirect()
         {
-            return m_platformInterop.ReadDeviceMemory(offset, count, out buffer);
+            return m_internalReadStringDirect;
+        }
+
+        //===============================================================================
+        /// <summary>
+        /// Returns the last device component Value property as a numeric
+        /// </summary>
+        /// <returns>The component Value property</returns>
+        //===============================================================================
+        internal double ReadValueDirect()
+        {
+            return m_internalReadValueDirect;
+        }
+
+        //=============================================================================================================================================================
+        /// <summary>
+        /// Read's device's memory
+        /// </summary>
+        /// <param name="memAddrCmd">The device's memory address command (Request)</param>
+        /// <param name="memReadCmd">The device's memory read command (Request)</param>
+        /// <param name="memoryOffset">The memory offset to read from</param>
+        /// <param name="memoryOffsetLength">The size of the memory offset value (typically 2 bytes)</param>
+        /// <param name="count">The number of bytes to read</param>
+        /// <param name="buffer">The buffer to receive the data</param>
+        /// <returns></returns>
+        //=============================================================================================================================================================
+        internal ErrorCodes ReadDeviceMemory1(byte memAddrCmd, byte memReadCmd, ushort memOffset, ushort memOffsetLength, byte count, out byte[] buffer)
+        {
+            return m_platformInterop.ReadDeviceMemory1(memAddrCmd, memReadCmd, memOffset, memOffsetLength, count, out buffer);
+        }
+
+        //=============================================================================================================================================================
+        /// <summary>
+        /// Read's device's memory
+        /// </summary>
+        /// <param name="memAddrCmd">The device's memory address command (Request)</param>
+        /// <param name="memReadCmd">The device's memory read command (Request)</param>
+        /// <param name="memoryOffset">The memory offset to read from</param>
+        /// <param name="memoryOffsetLength">The size of the memory offset value (typically 2 bytes)</param>
+        /// <param name="count">The number of bytes to read</param>
+        /// <param name="buffer">The buffer to receive the data</param>
+        /// <returns></returns>
+        //=============================================================================================================================================================
+        internal ErrorCodes ReadDeviceMemory2(byte memReadCmd, ushort memOffset, ushort memOffsetLength, byte count, out byte[] buffer)
+        {
+            return m_platformInterop.ReadDeviceMemory2(memReadCmd, memOffset, memOffsetLength, count, out buffer);
+        }
+
+        //=============================================================================================================================================================
+        /// <summary>
+        /// Read's device's memory
+        /// </summary>
+        /// <param name="memAddrCmd">The device's memory address command (Request)</param>
+        /// <param name="memReadCmd">The device's memory read command (Request)</param>
+        /// <param name="memoryOffset">The memory offset to read from</param>
+        /// <param name="memoryOffsetLength">The size of the memory offset value (typically 2 bytes)</param>
+        /// <param name="count">The number of bytes to read</param>
+        /// <param name="buffer">The buffer to receive the data</param>
+        /// <returns></returns>
+        //=============================================================================================================================================================
+        internal ErrorCodes ReadDeviceMemory3(byte memReadCmd, ushort memOffset, ushort memOffsetLength, byte count, out byte[] buffer)
+        {
+            return m_platformInterop.ReadDeviceMemory3(memReadCmd, memOffset, memOffsetLength, count, out buffer);
+        }
+
+        //=============================================================================================================================================================
+        /// <summary>
+        /// Read's device's memory
+        /// </summary>
+        /// <param name="memAddrCmd">The device's memory address command (Request)</param>
+        /// <param name="memReadCmd">The device's memory read command (Request)</param>
+        /// <param name="memoryOffset">The memory offset to read from</param>
+        /// <param name="memoryOffsetLength">The size of the memory offset value (typically 2 bytes)</param>
+        /// <param name="count">The number of bytes to read</param>
+        /// <param name="buffer">The buffer to receive the data</param>
+        /// <returns></returns>
+        //=============================================================================================================================================================
+        internal ErrorCodes ReadDeviceMemory4(byte memReadCmd, ushort memOffset, ushort memOffsetLength, byte count, out byte[] buffer)
+        {
+            return m_platformInterop.ReadDeviceMemory4(memReadCmd, memOffset, memOffsetLength, count, out buffer);
         }
 
         //===================================================================================================
@@ -1979,24 +2606,93 @@ namespace MeasurementComputing.DAQFlex
             return m_platformInterop.LockDeviceMemory(address, lockCode);
         }
 
+        //==============================================================================================================================================================================
+        /// <summary>
+        /// Virtual method to Write data to a device's memory
+        /// </summary>
+        /// <param name="memAddrCmd">The device's memory address command</param>
+        /// <param name="memWriteCmd">The device's memory write command</param>
+        /// <param name="memoryOffset">The memory offset to start writing to</param>
+        /// <param name="memOffsetLength">The size of the memoryOffset value (typically 2 bytes)</param>
+        /// <param name="bufferOffset">The buffer offset</param>
+        /// <param name="buffer">The buffer containg the data to write to memory</param>
+        /// <param name="count">The number of bytes to write</param>
+        /// <returns></returns>
+        //==============================================================================================================================================================================
+        internal ErrorCodes WriteDeviceMemory1(byte memAddrCmd, byte memWriteCmd, ushort memoryOffset, ushort memOffsetLength, ushort bufferOffset, byte[] buffer, byte count)
+        {
+            return m_platformInterop.WriteDeviceMemory1(memAddrCmd, memWriteCmd, memoryOffset, memOffsetLength, bufferOffset, buffer, count);
+        }
+
+        //==============================================================================================================================================================================
+        /// <summary>
+        /// Virtual method to Write data to a device's memory
+        /// </summary>
+        /// <param name="memWriteCmd">The device's memory write command</param>
+        /// <param name="memoryOffset">The memory offset to start writing to</param>
+        /// <param name="memOffsetLength">The size of the memoryOffset value (typically 2 bytes)</param>
+        /// <param name="bufferOffset">The buffer offset</param>
+        /// <param name="buffer">The buffer containg the data to write to memory</param>
+        /// <param name="count">The number of bytes to write</param>
+        /// <returns></returns>
+        //==============================================================================================================================================================================
+        internal ErrorCodes WriteDeviceMemory2(byte memWriteCmd, ushort memoryOffset, ushort memOffsetLength, ushort bufferOffset, byte[] buffer, byte count)
+        {
+            return m_platformInterop.WriteDeviceMemory2(memWriteCmd, memoryOffset, memOffsetLength, bufferOffset, buffer, count);
+        }
+
+        //==============================================================================================================================================================================
+        /// <summary>
+        /// Virtual method to Write data to a device's memory
+        /// </summary>
+        /// <param name="unlockKey">The device's unlock key</param>
+        /// <param name="memWriteCmd">The device's memory write command</param>
+        /// <param name="memoryOffset">The memory offset to start writing to</param>
+        /// <param name="memOffsetLength">The size of the memoryOffset value (typically 2 bytes)</param>
+        /// <param name="bufferOffset">The buffer offset</param>
+        /// <param name="buffer">The buffer containg the data to write to memory</param>
+        /// <param name="count">The number of bytes to write</param>
+        /// <returns></returns>
+        //==============================================================================================================================================================================
+        internal ErrorCodes WriteDeviceMemory3(ushort unlockKey, byte memCmd, ushort memoryOffset, ushort memOffsetLength, ushort bufferOffset, byte[] buffer, byte count)
+        {
+            return m_platformInterop.WriteDeviceMemory3(unlockKey, memCmd, memoryOffset, memOffsetLength, bufferOffset, buffer, count);
+        }
+
+        //==============================================================================================================================================================================
+        /// <summary>
+        /// Virtual method to Write data to a device's memory
+        /// </summary>
+        /// <param name="unlockKey">The device's unlock key</param>
+        /// <param name="memWriteCmd">The device's memory write command</param>
+        /// <param name="memoryOffset">The memory offset to start writing to</param>
+        /// <param name="memOffsetLength">The size of the memoryOffset value (typically 2 bytes)</param>
+        /// <param name="bufferOffset">The buffer offset</param>
+        /// <param name="buffer">The buffer containg the data to write to memory</param>
+        /// <param name="count">The number of bytes to write</param>
+        /// <returns></returns>
+        //==============================================================================================================================================================================
+        internal ErrorCodes WriteDeviceMemory4(ushort unlockKey, byte memCmd, ushort memoryOffset, ushort memOffsetLength, ushort bufferOffset, byte[] buffer, byte count)
+        {
+            return m_platformInterop.WriteDeviceMemory4(unlockKey, memCmd, memoryOffset, memOffsetLength, bufferOffset, buffer, count);
+        }
+
         //===================================================================================================
         /// <summary>
-        /// Writes to a device's memory
+        /// Loads data into the device's FPGA
         /// </summary>
-        /// <param name="offset">The starting addresss</param>
-        /// <param name="count">The number of bytes to read</param>
-        /// <param name="buffer">The buffer containing the contents to write</param>
+        /// <param name="buffer">The data to load</param>
         /// <returns>The error code</returns>
         //===================================================================================================
-        internal ErrorCodes WriteDeviceMemory(ushort offset, ushort bufferOffset, byte[] buffer, byte count)
+        internal ErrorCodes LoadFPGA(byte request, byte[] buffer)
         {
-            return m_platformInterop.WriteDeviceMemory(offset, bufferOffset, buffer, count);
+            return m_platformInterop.LoadFPGA(request, buffer);
         }
 
         //===============================================================================
         /// <summary>
-        /// Creates a set of USB packets to send to the device and is based
-        /// on the message contents
+        /// Creates a set of USB packets to send to the device. One for sending the
+        /// message to the device and one for receiving the device's response
         /// </summary>
         /// <param name="message">The message to send to the device</param>
         //===============================================================================
@@ -2010,24 +2706,60 @@ namespace MeasurementComputing.DAQFlex
             m_startInputScan = false;
             m_startOutputScan = false;
 
-            bool deferMessage = CheckForCriticalParams(msg);
+            bool deferMessage = false;
 
+            deferMessage = CheckForCriticalParams(msg);
+
+            // Add a Control Out Packet
+
+            // store the message in the Control Out Packet buffer
             for (int i = 0; i < message.Length; i++)
+            {
                 m_controlOutPacket.Buffer[i] = message[i];
+            }
 
             m_controlOutPacket.DeferTransfer = deferMessage;
             m_controlOutPacket.BytesTransfered = 0;
 
             m_usbPackets.Add(m_controlOutPacket);
 
+            // Add a Control In Packet for the device's response
             if (!m_controlOutPacket.DeferTransfer)
             {
-                // add a control in packet to receive the text response
-                if (msg.Contains("?"))
-                    m_controlInPacket.IsQuery = true;
+                Array.Clear(m_controlInPacket.Buffer, 0, m_controlInPacket.Length);
+                m_usbPackets.Add(m_controlInPacket);
+            }
+        }
 
-                //if (!msg.Contains(DaqComponents.DEV) && !msg.Contains(DaqCommands.RESET))
-                    m_usbPackets.Add(m_controlInPacket);
+        //===============================================================================
+        /// <summary>
+        /// Creates a set of USB packets to send to the device. One for sending the
+        /// message to the device and one for receiving the device's response
+        /// </summary>
+        /// <param name="message">The message to send to the device</param>
+        //===============================================================================
+        protected void CreateUsbPacketsDirect(byte[] message)
+        {
+            // clear the list of packets
+            m_usbPacketsDirect.Clear();
+            
+            // Add a Control Out Packet
+
+            // store the message in the Control Out Packet buffer
+            for (int i = 0; i < message.Length; i++)
+            {
+                m_controlOutPacketDirect.Buffer[i] = message[i];
+            }
+
+            m_controlOutPacketDirect.DeferTransfer = false;
+            m_controlOutPacketDirect.BytesTransfered = 0;
+
+            m_usbPacketsDirect.Add(m_controlOutPacketDirect);
+
+            // Add a Control In Packet for the device's response
+            if (!m_controlOutPacketDirect.DeferTransfer)
+            {
+                m_usbPacketsDirect.Add(m_controlInPacket);
             }
         }
 
@@ -2072,8 +2804,7 @@ namespace MeasurementComputing.DAQFlex
 
                     if (m_criticalParams.InputSampleMode == SampleMode.Continuous)
                     {
-                        int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
-                        m_totalSamplesToReadPerChannel = m_internalReadBuffer.Length / (byteRatio * m_criticalParams.AiChannelCount);
+                        m_totalSamplesToReadPerChannel = m_internalReadBuffer.Length / (m_criticalParams.DataInXferSize * m_criticalParams.AiChannelCount);
                         m_criticalParams.InputScanSamples = m_totalSamplesToReadPerChannel;
                     }
                 }
@@ -2098,7 +2829,7 @@ namespace MeasurementComputing.DAQFlex
                 m_totalSamplesToReadPerChannel = 1000 * m_criticalParams.InputPacketSize;
                 m_criticalParams.InputScanSamples = m_totalSamplesToReadPerChannel;
                 m_criticalParams.InputSampleMode = SampleMode.Continuous;
-                m_criticalParams.InputXferSize = GetOptimalInputBufferSize(m_criticalParams.InputScanRate);
+                m_criticalParams.BulkInXferSize = GetOptimalInputBufferSize(m_criticalParams.InputScanRate);
                 return false;
             }
 
@@ -2108,7 +2839,7 @@ namespace MeasurementComputing.DAQFlex
                 m_totalSamplesToReadPerChannel = MessageTranslator.GetSamples(message);
                 m_criticalParams.InputScanSamples = m_totalSamplesToReadPerChannel;
                 m_criticalParams.InputSampleMode = SampleMode.Finite;
-                m_criticalParams.InputXferSize = GetOptimalInputBufferSize(m_criticalParams.InputScanRate);
+                m_criticalParams.BulkInXferSize = GetOptimalInputBufferSize(m_criticalParams.InputScanRate);
                 return false;
             }
 
@@ -2116,7 +2847,7 @@ namespace MeasurementComputing.DAQFlex
             {
                 TransferMode tm = MessageTranslator.GetTransferMode(message);
                 m_criticalParams.InputTransferMode = tm;
-                m_criticalParams.InputXferSize = GetOptimalInputBufferSize(m_criticalParams.InputScanRate);
+                m_criticalParams.BulkInXferSize = GetOptimalInputBufferSize(m_criticalParams.InputScanRate);
                 return false;
             }
 
@@ -2124,7 +2855,7 @@ namespace MeasurementComputing.DAQFlex
             {
                 int ch = MessageTranslator.GetChannel(message);
                 m_criticalParams.HighAiChannel = ch;
-                m_criticalParams.InputXferSize = GetOptimalInputBufferSize(m_criticalParams.InputScanRate);
+                m_criticalParams.BulkInXferSize = GetOptimalInputBufferSize(m_criticalParams.InputScanRate);
                 return false;
             }
 
@@ -2132,7 +2863,7 @@ namespace MeasurementComputing.DAQFlex
             {
                 int ch = MessageTranslator.GetChannel(message);
                 m_criticalParams.LowAiChannel = ch;
-                m_criticalParams.InputXferSize = GetOptimalInputBufferSize(m_criticalParams.InputScanRate);
+                m_criticalParams.BulkInXferSize = GetOptimalInputBufferSize(m_criticalParams.InputScanRate);
                 return false;
             }
 
@@ -2147,7 +2878,7 @@ namespace MeasurementComputing.DAQFlex
                 else
                 {
                     m_criticalParams.InputScanRate = rate;
-                    m_criticalParams.InputXferSize = GetOptimalInputBufferSize(m_criticalParams.InputScanRate);
+                    m_criticalParams.BulkInXferSize = GetOptimalInputBufferSize(m_criticalParams.InputScanRate);
                 }
 
                 return false;
@@ -2179,7 +2910,7 @@ namespace MeasurementComputing.DAQFlex
                 m_totalSamplesToWritePerChannel = INTERNAL_WRITE_BUFFER_SIZE / 2;
                 m_criticalParams.OutputScanSamples = m_totalSamplesToWritePerChannel;
                 m_criticalParams.OutputSampleMode = SampleMode.Continuous;
-                m_criticalParams.OutputXferSize = GetOptimalOutputBufferSize(m_criticalParams.OutputScanRate);
+                m_criticalParams.BulkOutXferSize = GetOptimalOutputBufferSize(m_criticalParams.OutputScanRate);
                 return false;
             }
 
@@ -2189,7 +2920,7 @@ namespace MeasurementComputing.DAQFlex
                 m_totalSamplesToWritePerChannel = MessageTranslator.GetSamples(message);
                 m_criticalParams.OutputScanSamples = m_totalSamplesToWritePerChannel;
                 m_criticalParams.OutputSampleMode = SampleMode.Finite;
-                m_criticalParams.OutputXferSize = GetOptimalOutputBufferSize(m_criticalParams.OutputScanRate);
+                m_criticalParams.BulkOutXferSize = GetOptimalOutputBufferSize(m_criticalParams.OutputScanRate);
                 return false;
             }
 
@@ -2204,7 +2935,7 @@ namespace MeasurementComputing.DAQFlex
                 else
                 {
                     m_criticalParams.OutputScanRate = rate;
-                    m_criticalParams.OutputXferSize = GetOptimalOutputBufferSize(m_criticalParams.OutputScanRate);
+                    m_criticalParams.BulkOutXferSize = GetOptimalOutputBufferSize(m_criticalParams.OutputScanRate);
                 }
 
                 return false;
@@ -2215,7 +2946,7 @@ namespace MeasurementComputing.DAQFlex
                 int ch = MessageTranslator.GetChannel(message);
                 m_criticalParams.HighAoChannel = ch;
                 m_criticalParams.AoChannelCount = m_criticalParams.HighAoChannel - m_criticalParams.LowAoChannel + 1;
-                m_criticalParams.OutputXferSize = GetOptimalOutputBufferSize(m_criticalParams.OutputScanRate);
+                m_criticalParams.BulkOutXferSize = GetOptimalOutputBufferSize(m_criticalParams.OutputScanRate);
                 return false;
             }
 
@@ -2224,7 +2955,7 @@ namespace MeasurementComputing.DAQFlex
                 int ch = MessageTranslator.GetChannel(message);
                 m_criticalParams.LowAoChannel = ch;
                 m_criticalParams.AoChannelCount = m_criticalParams.HighAoChannel - m_criticalParams.LowAoChannel + 1;
-                m_criticalParams.OutputXferSize = GetOptimalOutputBufferSize(m_criticalParams.OutputScanRate);
+                m_criticalParams.BulkOutXferSize = GetOptimalOutputBufferSize(m_criticalParams.OutputScanRate);
                 return false;
             }
 
@@ -2252,10 +2983,7 @@ namespace MeasurementComputing.DAQFlex
                     }
                 }
 
-                if (m_criticalParams.InputTransferMode == TransferMode.BurstIO)
-                    return false;
-                else
-                    return true;
+                return true;
             }
 
             if (message.Contains(DaqComponents.AOSCAN) && message.Contains(DaqCommands.STOP))
@@ -2281,16 +3009,26 @@ namespace MeasurementComputing.DAQFlex
         //=================================================================================
         internal int WaitForData(int numberOfSamplesRequested, int timeOut)
         {
-            int bytesPerSample = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
+            int bytesPerSample = CriticalParams.DataInXferSize;
             int channelCount = m_criticalParams.AiChannelCount;
-            int numberOfBytesRequested = channelCount * (bytesPerSample * numberOfSamplesRequested);
+            int numberOfBytesRequested;
             int numberOfNewBytes = 0;
             long elapsedTime;
 
-            if (m_inputScanState == ScanState.Idle && m_inputSamplesReadPerChannel < m_criticalParams.InputScanSamples && m_inputScanComplete)
+            if (timeOut < 0)
+                timeOut = 0;
+
+            if (m_inputScanStatus == ScanState.Idle && m_inputScanComplete && m_onInputScanCompleteCallbackControl != null && m_onInputScanCompleteCallbackControl.Created)
             {
+                numberOfBytesRequested = channelCount * bytesPerSample * numberOfSamplesRequested;
+                numberOfNewBytes = channelCount * bytesPerSample * (int)m_scanCompleteCallbackParam[0];
+            }
+            else if (m_inputScanStatus == ScanState.Idle && m_inputScanComplete && m_inputSamplesReadPerChannel < (ulong)m_criticalParams.InputScanSamples)
+            {
+                numberOfBytesRequested = channelCount * bytesPerSample * numberOfSamplesRequested;
+
                 if (m_inputBufferFilled)
-                    numberOfNewBytes = m_internalReadBuffer.Length - m_inputSamplesReadPerChannel;
+                    numberOfNewBytes = (int)((ulong)m_internalReadBuffer.Length - m_inputSamplesReadPerChannel);
                 else
                     numberOfNewBytes = GetFreshDataCount();
             }
@@ -2298,15 +3036,25 @@ namespace MeasurementComputing.DAQFlex
             {
                 numberOfNewBytes = 0;
 
-                if (m_criticalParams.InputSampleMode == SampleMode.Finite && numberOfSamplesRequested > m_criticalParams.InputScanSamples)
+                if (m_criticalParams.InputSampleMode == SampleMode.Finite && 
+                        numberOfSamplesRequested > m_criticalParams.InputScanSamples)
                 {
                     numberOfSamplesRequested = m_criticalParams.InputScanSamples;
+                }
+                else if (m_criticalParams.TriggerRearmEnabled)
+                {
+                    if (m_onDataAvailableCallbackControl != null)
+                        numberOfSamplesRequested = m_onDataAvailableCallbackControl.NumberOfSamples;
+                    else
+                        numberOfSamplesRequested = m_criticalParams.AdjustedRearmSamplesPerTrigger;
                 }
                 else if (numberOfSamplesRequested > m_internalReadBuffer.Length)
                 {
                     m_errorCode = ErrorCodes.TooManySamplesRequested;
                     return 0;
                 }
+
+                numberOfBytesRequested = channelCount * (bytesPerSample * numberOfSamplesRequested);
 
                 m_readStopWatch.Reset();
 
@@ -2325,9 +3073,8 @@ namespace MeasurementComputing.DAQFlex
                     if (m_inputScanStatus == ScanState.Idle)
                         break;
 
-                    Thread.Sleep(1);
-
-                    System.Windows.Forms.Application.DoEvents();
+                    if (timeOut == 0 || timeOut > 20)
+                        Thread.Sleep(1);
 
                     elapsedTime = m_readStopWatch.ElapsedMilliseconds;
 
@@ -2336,6 +3083,10 @@ namespace MeasurementComputing.DAQFlex
                         m_errorCode = ErrorCodes.InputScanTimeOut;
                         break;
                     }
+
+                    // this is called from the same thread as ReadScanData so 
+                    // we need to check for system events
+                    //Application.DoEvents();
                 }
 
                 m_readStopWatch.Stop();
@@ -2359,6 +3110,9 @@ namespace MeasurementComputing.DAQFlex
         internal int WaitForSpace(int numberOfBytes, int timeOut)
         {
             long elapsedTime;
+
+            if (timeOut < 0)
+                timeOut = 0;
 
             m_writeStopWatch.Reset();
             m_writeStopWatch.Start();
@@ -2395,7 +3149,8 @@ namespace MeasurementComputing.DAQFlex
                             availableBytes = (m_totalBytesReceivedByDevice % m_internalWriteBuffer.Length) - CurrentOutputScanWriteIndex;
                     }
 
-                    Thread.Sleep(1);
+                    if (timeOut == 0 || timeOut > 20)
+                        Thread.Sleep(1);
                 }
             }
             else
@@ -2428,101 +3183,90 @@ namespace MeasurementComputing.DAQFlex
 
         protected void CheckTriggerRearm()
         {
-            UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
-            packet.TransferType = UsbTransferTypes.ControlOut;
-            packet.Request = ControlRequest.MESSAGE_REQUEST;
-            packet.Index = 0;
-            packet.Value = 0;
-            packet.Length = (ushort)m_aiTrigStatus.Length;
-            Array.Copy(m_aiTrigStatus, packet.Buffer, m_aiTrigStatus.Length);
+            string triggerSupport = m_daqDevice.GetDevCapsString("AISCAN:TRIG", false);
 
-            // send the status message
-            m_platformInterop.UsbControlOutRequest(packet);
-
-            // get the status response
-            packet.TransferType = UsbTransferTypes.ControlIn;
-
-            m_platformInterop.UsbControlInRequest(packet);
-
-            string response = m_ae.GetString(packet.Buffer, 0, packet.Buffer.Length);
-
-            if (response.Contains(PropertyValues.ENABLE))
+            if (triggerSupport.Contains(DevCapImplementations.PROG))
             {
-                packet.Length = (ushort)m_aiRearmStatus.Length;
-                Array.Copy(m_aiRearmStatus, packet.Buffer, m_aiRearmStatus.Length);
+                string response;
 
-                // send the status message
-                m_platformInterop.UsbControlOutRequest(packet);
+                m_daqDevice.SendMessageDirect(Messages.AISCAN_TRIG_QUERY);
+                response = ReadStringDirect();
 
-                // get the status response
-                packet.TransferType = UsbTransferTypes.ControlIn;
+                UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
 
-                m_platformInterop.UsbControlInRequest(packet);
-
-                response = m_ae.GetString(packet.Buffer, 0, packet.Buffer.Length);
-
+                // if the trigger is enabled, check the AISCAN:REARM setting
                 if (response.Contains(PropertyValues.ENABLE))
                 {
-                    Array.Copy(m_aiQuerySamples, packet.Buffer, m_aiQuerySamples.Length);
+                    string rearmSupport = m_daqDevice.GetDevCapsString("AITRIG:REARM", false);
 
-                    // send request for sample count
-                    m_platformInterop.UsbControlOutRequest(packet);
-
-                    // get the sample count
-                    packet.TransferType = UsbTransferTypes.ControlIn;
-
-                    m_platformInterop.UsbControlInRequest(packet);
-
-                    response = m_ae.GetString(packet.Buffer, 0, packet.Buffer.Length);
-                    response = response.Trim(new char[] { Constants.NULL_TERMINATOR });
-
-                    int samples = MessageTranslator.GetSamples(response);
-                    m_criticalParams.DeviceInputSampleCount = samples;
-
-                    int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
-                    int inputBytes = m_criticalParams.AiChannelCount * byteRatio * samples;
-
-                    int rearmBytes = 0;
-                    int rearmSamples = 0;
-
-                    if (samples % m_criticalParams.InputXferSize != 0)
+                    if (rearmSupport.Contains(DevCapImplementations.PROG))
                     {
-                        // when xfer mode is not SINGLEIO, the rearm bytes need to be an integer multiple of the xfer size
-                        if (m_criticalParams.InputTransferMode != TransferMode.SingleIO)
-                            rearmBytes = (int)Math.Ceiling((double)inputBytes / (double)m_criticalParams.InputXferSize) * m_criticalParams.InputXferSize;
-                        else
-                            rearmBytes = inputBytes;
+                        // check if rearm is enabled
+                        m_daqDevice.SendMessageDirect(Messages.AITRIG_REARM_QUERY);
+                        response = ReadStringDirect();
 
-                        rearmSamples = rearmBytes / (m_criticalParams.AiChannelCount * byteRatio);
-                        string s = rearmSamples.ToString();
-                        int i = DaqComponents.AISCAN.Length + DaqProperties.SAMPLES.Length + 2;
-                        foreach (byte b in s)
+                        if (response.Contains(PropertyValues.ENABLE))
                         {
-                            m_aiScanSamples[i++] = b;
+                            // transfer size must be integer multiple of the packet size because
+                            // we're going to switch to continuous mode 
+                            while (m_criticalParams.BulkInXferSize % m_criticalParams.AiChannelCount != 0)
+                                m_criticalParams.BulkInXferSize += m_deviceInfo.MaxPacketSize;
+
+                            // switch to continuous mode so the device can continually re-trigger
+                            m_criticalParams.InputSampleMode = SampleMode.Continuous;
+
+                            // get the current sample count
+                            m_daqDevice.SendMessageDirect(Messages.AISCAN_SAMPLES_QUERY);
+                            response = ReadStringDirect();
+                            response = response.Trim(new char[] { Constants.NULL_TERMINATOR });
+
+                            int samples = MessageTranslator.GetSamples(response);
+                            m_criticalParams.AdjustedRearmSamplesPerTrigger = samples;
+
+                            // calculate the number of bytes in each transfer
+                            int inputBytes = m_criticalParams.AiChannelCount * m_criticalParams.DataInXferSize * samples;
+
+                            int rearmBytes = 0;
+                            int rearmSamples = 0;
+
+                            if (inputBytes % m_criticalParams.BulkInXferSize != 0)
+                            {
+                                // when xfer mode is not SINGLEIO, the rearm bytes need to be an integer multiple of the xfer size
+                                // because we're using continuous mode
+                                if (m_criticalParams.InputTransferMode != TransferMode.SingleIO)
+                                    rearmBytes = (int)Math.Floor((double)inputBytes / (double)m_criticalParams.BulkInXferSize) * m_criticalParams.BulkInXferSize;
+                                else
+                                    rearmBytes = inputBytes;
+
+                                // adjust the number of samples 
+                                rearmSamples = rearmBytes / (m_criticalParams.AiChannelCount * m_criticalParams.DataInXferSize);
+
+                                // now update the device's SAMPLE property 
+                                string msg = Messages.AISCAN_SAMPLES;
+                                msg = Messages.InsertValue(msg, rearmSamples);
+
+                                m_criticalParams.AdjustedRearmSamplesPerTrigger = rearmSamples;
+                            }
+
+                            // Delta rearm samples will non-zero when xfer mode is not SINGLEIO
+                            if (m_criticalParams.InputTransferMode != TransferMode.SingleIO)
+                                m_criticalParams.DeltaRearmInputSamples = rearmSamples - samples;
+                            else
+                                m_criticalParams.DeltaRearmInputSamples = 0;
+
+                            m_totalSamplesToReadPerChannel = INTERNAL_READ_BUFFER_SIZE / 2;
+
+                            m_totalSamplesToReadPerChannel = (int)Math.Ceiling((double)m_totalSamplesToReadPerChannel / (double)m_criticalParams.AiChannelCount) * m_criticalParams.AiChannelCount;
+                            m_criticalParams.InputScanSamples = m_totalSamplesToReadPerChannel;
+
+                            if (m_onDataAvailableCallbackControl != null && m_onDataAvailableCallbackControl.NumberOfSamples > m_criticalParams.AdjustedRearmSamplesPerTrigger)
+                                m_onDataAvailableCallbackControl.NumberOfSamples = m_criticalParams.AdjustedRearmSamplesPerTrigger;
                         }
-
-                        for (int j = i; j < m_aiScanSamples.Length; j++)
-                            m_aiScanSamples[j] = 0;
-
-                        Array.Copy(m_aiScanSamples, packet.Buffer, m_aiScanSamples.Length);
-
-                        // send new sample count to the device
-                        m_platformInterop.UsbControlOutRequest(packet);
+                        else
+                        {
+                            m_criticalParams.DeltaRearmInputSamples = 0;
+                        }
                     }
-
-                    // Delta rearm samples will non-zero when xfer mode is not SINGLEIO
-                    if (m_criticalParams.InputTransferMode != TransferMode.SingleIO)
-                        m_criticalParams.DeltaRearmInputSamples = rearmSamples - samples;
-                    else
-                        m_criticalParams.DeltaRearmInputSamples = 0;
-
-                    m_totalSamplesToReadPerChannel = INTERNAL_READ_BUFFER_SIZE / 2;
-                    m_criticalParams.InputScanSamples = m_totalSamplesToReadPerChannel;
-                    m_criticalParams.InputSampleMode = SampleMode.Continuous;
-                }
-                else
-                {
-                    m_criticalParams.DeltaRearmInputSamples = 0;
                 }
             }
         }
@@ -2536,7 +3280,7 @@ namespace MeasurementComputing.DAQFlex
         protected ScanState GetInputScanState()
         {
             m_platformInterop.ControlTransferMutex.WaitOne();
-        
+
             UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
             packet.TransferType = UsbTransferTypes.ControlOut;
             packet.Request = ControlRequest.MESSAGE_REQUEST;
@@ -2625,7 +3369,8 @@ namespace MeasurementComputing.DAQFlex
                 }
                 else
                 {
-                    m_platformInterop.ClearDataUnderrun();
+                    // Let ProcessOutputScanThread clear the data underrun when it exits.
+                    //m_platformInterop.ClearDataUnderrun();
                     m_outputScanState = ScanState.Idle;
                 }
             }
@@ -2646,9 +3391,8 @@ namespace MeasurementComputing.DAQFlex
         protected int GetFreshDataCount()
         {
             int numberOfNewBytes;
-            int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
 
-            numberOfNewBytes = (int)Math.Min(m_internalReadBuffer.Length, (byteRatio * m_criticalParams.AiChannelCount) * (m_inputScanCount - m_inputSamplesReadPerChannel));
+            numberOfNewBytes = (int)Math.Min(m_internalReadBuffer.Length, (double)((ulong)(m_criticalParams.DataInXferSize * m_criticalParams.AiChannelCount) * (m_inputScanCount - m_inputSamplesReadPerChannel)));
 
             return numberOfNewBytes;
         }
@@ -2661,6 +3405,12 @@ namespace MeasurementComputing.DAQFlex
         //======================================================================
         internal void ReleaseDevice()
         {
+            if (m_inputScanStatus == ScanState.Running)
+                StopInputScan(true);
+
+            if (m_outputScanState == ScanState.Running)
+                StopOutputScan(true);
+
             m_platformInterop.ReleaseDevice();
         }
 
@@ -2673,7 +3423,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="queueAction">The queue action - Enqueue or Dequeue</param>
         /// <returns>The number of available samples that was dequeued</returns>
         //=============================================================================================================================================
-        protected CallbackInfo QueueCallbackInfo(int avaiableSamplesPerChannel, int samplesReadPerChannel, QueueAction queueAction)
+        protected CallbackInfo QueueCallbackInfo(int avaiableSamplesPerChannel, ulong samplesReadPerChannel, QueueAction queueAction)
         {
             lock (callbackInfoQueueLock)
             {
@@ -2691,6 +3441,96 @@ namespace MeasurementComputing.DAQFlex
                 }
             }
         }
+
+#if DEBUG
+
+        List<Dictionary<string, string>> m_objectDumps = new List<Dictionary<string, string>>();
+
+        protected void DumpObject(object obj)
+        {
+            Dictionary<string, string> objectDump = new Dictionary<string, string>();
+
+            Type type = obj.GetType();
+
+            if (type != null)
+            {
+                FieldInfo[] fieldInfos = type.GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
+
+                if (fieldInfos != null)
+                {
+                    if (fieldInfos.Length > 0)
+                    {
+                        string fieldName;
+                        string fieldValue;
+                        object val;
+
+                        for (int i = 0; i < fieldInfos.Length; i++)
+                        {
+                            fieldName = fieldInfos[i].Name;
+                            val = fieldInfos[i].GetValue(this);
+
+                            if (val != null)
+                            {
+                                fieldValue = val.ToString();
+                                objectDump.Add(fieldName, fieldValue);
+                            }
+                            else
+                            {
+                                objectDump.Add(fieldName, "null");
+                            }
+                        }
+
+                        m_objectDumps.Add(objectDump);
+
+                        CompareObjects();
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.Assert(false, "Could not get DaqComponent fields");
+                    }
+                }
+                else
+                {
+                    System.Diagnostics.Debug.Assert(false, "Could not get DaqComponent fields");
+                }
+            }
+        }
+
+        protected void CompareObjects()
+        {
+            if (m_objectDumps.Count > 1)
+            {
+                // compare the last two object dumps
+                Dictionary<string, string> obj1 = m_objectDumps[m_objectDumps.Count - 1];
+                Dictionary<string, string> obj2 = m_objectDumps[m_objectDumps.Count - 2];
+
+                int fieldCount = obj1.Count;
+
+                string[] obj1Values = new string[fieldCount];
+                string[] obj2Values = new string[fieldCount];
+                string[] keys = new string[fieldCount];
+
+                obj1.Values.CopyTo(obj1Values, 0);
+                obj2.Values.CopyTo(obj2Values, 0);
+                obj1.Keys.CopyTo(keys, 0);
+
+                bool dumpValues = false;
+
+                for (int i = 0; i < obj1Values.Length; i++)
+                {
+                    if (obj1Values[i] != obj2Values[i])
+                    {
+                        dumpValues = true;
+                        DebugLogger.WriteLine("{0}.{1} = {2},{3}", this, keys[i], obj1Values[i], obj2Values[i]);
+                    }
+                }
+
+                if (dumpValues)
+                    DebugLogger.DumpDebugInfo();
+            }
+        }
+#endif
+
     }
 
     //=====================================================================================
@@ -2700,7 +3540,7 @@ namespace MeasurementComputing.DAQFlex
     //=====================================================================================
     internal class CallbackInfo
     {
-        internal CallbackInfo(int availableSamplesPerChannel, int samplesReadPerChannel)
+        internal CallbackInfo(int availableSamplesPerChannel, ulong samplesReadPerChannel)
         {
             AvailableSamplesPerChannel = availableSamplesPerChannel;
             SamplesReadPerChannel = samplesReadPerChannel;
@@ -2708,7 +3548,7 @@ namespace MeasurementComputing.DAQFlex
 
         internal int AvailableSamplesPerChannel { get; set; }
 
-        internal int SamplesReadPerChannel { get; set; }
+        internal ulong SamplesReadPerChannel { get; set; }
     }
 
     //======================================================================
@@ -2726,7 +3566,6 @@ namespace MeasurementComputing.DAQFlex
         protected UsbTransferTypes m_transferType;
         protected uint m_bytesTransfered;
         protected bool m_deferTransfer;
-        protected bool m_isQuery;
 
         internal UsbSetupPacket(int bufferSize)
         {
@@ -2735,7 +3574,6 @@ namespace MeasurementComputing.DAQFlex
             m_wValue = 0;
             m_wIndex = 0;
             m_deferTransfer = false;
-            m_isQuery = false;
         }
 
         internal UsbTransferTypes TransferType
@@ -2785,10 +3623,10 @@ namespace MeasurementComputing.DAQFlex
             set { m_bytesTransfered = value; }
         }
 
-        internal bool IsQuery
-        {
-            get { return m_isQuery; }
-            set { m_isQuery = value; }
-        }
+        //internal bool IsQuery
+        //{
+        //    get { return m_isQuery; }
+        //    set { m_isQuery = value; }
+        //}
     }
 }

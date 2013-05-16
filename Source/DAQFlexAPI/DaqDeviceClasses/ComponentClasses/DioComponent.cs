@@ -23,18 +23,15 @@ namespace MeasurementComputing.DAQFlex
 {
     internal partial class DioComponent : IoComponent
     {
-        protected int[] m_dataWidths;
-        protected int[] m_inMask;
-        protected int[] m_outMask;
-        protected int[] m_portValues;
-        protected int m_portToReadBack;
-        protected ulong m_bitCount;
-        protected List<int> m_validPorts = new List<int>();
-        protected Dictionary<int, string> m_portConfigs = new Dictionary<int, string>();
-        protected string m_supportedConfigurations = String.Empty;
+        protected const int IN_DIR = 0;
+        protected const int OUT_DIR = 1;
 
-        // this is for translating UL port types
-        protected Dictionary<int, int> m_portNumbers = new Dictionary<int, int>();
+        protected int[] m_portWidths;
+        protected int[] m_configMasks;
+        protected int[] m_outputValues;
+        protected int m_bitCount;
+        protected List<int> m_validPorts = new List<int>();
+        protected string m_supportedConfigurations = String.Empty;
 
         //=================================================================================================================
         /// <summary>
@@ -46,10 +43,10 @@ namespace MeasurementComputing.DAQFlex
         public DioComponent(DaqDevice daqDevice, DeviceInfo deviceInfo, int maxChannels)
             : base(daqDevice, deviceInfo, maxChannels)
         {
-            m_dataWidths = new int[maxChannels];
-            m_inMask = new int[maxChannels];
-            m_outMask = new int[maxChannels];
-            m_portValues = new int[maxChannels];
+            // dimension arrays here initialize them in Initialize()
+            m_portWidths = new int[m_maxChannels];
+            m_configMasks = new int[m_maxChannels];
+            m_outputValues = new int[m_maxChannels];
         }
 
         //=================================================================================================================
@@ -59,23 +56,27 @@ namespace MeasurementComputing.DAQFlex
         //=================================================================================================================
         internal override void Initialize()
         {
-            ulong bitCount;
+            int bitCount;
+            int portWidth;
 
             m_bitCount = 0;
 
-            int index = 0;
-
-            foreach (int dataWidth in m_dataWidths)
+            for (int i = 0; i < m_maxChannels; i++)
             {
-                bitCount = GetResolution((ulong)dataWidth);
+                portWidth = (int)m_daqDevice.GetDevCapsValue(String.Format("DIO{0}:MAXCOUNT", MessageTranslator.GetChannelSpecs(i)));
+
+                // keep track of the total bit count
+                bitCount = GetResolution((ulong)portWidth);
                 m_bitCount += bitCount;
-                m_inMask[index] = dataWidth;
-                m_outMask[index] = 0;
 
-                // default to input
-                m_portConfigs[index] = PropertyValues.IN;
+                // store the port width
+                m_portWidths[i] = portWidth;
 
-                index++;
+                // save all ports on the device as input
+                m_configMasks[i] = 0;
+
+                // set all output values to 0
+                m_outputValues[i] = 0;
             }
         }
 
@@ -116,20 +117,18 @@ namespace MeasurementComputing.DAQFlex
         {
             ErrorCodes errorCode = ErrorCodes.NoErrors;
 
-            if (message.Contains(CurlyBraces.LEFT.ToString()) && message.Contains(CurlyBraces.RIGHT.ToString()))
-            {
+            int lbIndex = message.IndexOf(CurlyBraces.LEFT);
+            int rbIndex = message.IndexOf(CurlyBraces.RIGHT);
+            int colonIndex = message.IndexOf(Constants.PROPERTY_SEPARATOR);
+
+            if (lbIndex < rbIndex && rbIndex < colonIndex)
                 errorCode = ValidateChannel(ref message);
-            }
 
-            if (errorCode == ErrorCodes.NoErrors && message.Contains(DaqProperties.DIR))
-            {
-                errorCode = ValidateConfig(ref message);
-            }
+            if (errorCode == ErrorCodes.NoErrors && message.Contains(DaqProperties.DIR + Constants.EQUAL_SIGN))
+                errorCode = ProcessDirectionMessage(ref message);
 
-            if (errorCode == ErrorCodes.NoErrors && message.Contains(DaqProperties.VALUE))
-            {
-                errorCode = ValidateOperation(ref message);
-            }
+            if (errorCode == ErrorCodes.NoErrors && message.Contains(DaqProperties.VALUE + Constants.EQUAL_SIGN))
+                errorCode = ProcessValueSetMessage(ref message);
 
             return errorCode;
         }
@@ -143,284 +142,229 @@ namespace MeasurementComputing.DAQFlex
         //===========================================================================================
         internal override ErrorCodes ValidateChannel(ref string message)
         {
+            ErrorCodes errorCode = ErrorCodes.NoErrors;
+
+            // get the port number embedded in the message
             int port = MessageTranslator.GetPort(message);
+            double bit = MessageTranslator.GetBit(message);
 
-            if (port < 0 || port > (m_portNumbers.Count - 1))
-                return ErrorCodes.InvalidDioPortSpecified;
+            // get number of supported ports
+            int numberOfPorts = (int)m_daqDevice.GetDevCapsValue("DIO:CHANNELS");
 
-            int bit;
-
-            if (message.Contains(Constants.VALUE_RESOLVER.ToString()))
+            // return if port is invalid
+            if (port < 0 || port >= numberOfPorts)
             {
-                bit = MessageTranslator.GetBit(message);
+                errorCode = ErrorCodes.InvalidDioPortSpecified;
+            }
 
-                if (bit < 0 || ((port + 1) * bit) > ((int)m_bitCount - 1))
-                    return ErrorCodes.InvalidDioBitSpecified;
+            // if the channel specs has a value resolver ('/') then test the bit
+            if (errorCode == ErrorCodes.NoErrors && message.Contains(Constants.VALUE_RESOLVER.ToString()))
+            {
+                // get the width of the port in bits
+                int maxBitNum = (int)GetResolution((ulong)m_portWidths[port]) - 1;
 
-                int portWidth = (int)GetResolution((ulong)m_dataWidths[port]);
-
-                if ((bit + 1) > portWidth)
+                // return if bit is invalid
+                if (bit < 0 || bit > maxBitNum)
                 {
-                    try
-                    {
-                        int colonIndex = message.IndexOf(Constants.PROPERTY_SEPARATOR);
-
-                        if (colonIndex > 0)
-                        {
-                            string property = message.Substring(colonIndex);
-
-                            int adjustedPort = (int)Math.Ceiling((double)portWidth / (double)bit);
-                            int adjustedBit = bit - portWidth;
-
-                            string adjustedMessage = String.Empty;
-
-                            if (message.Contains(Constants.QUERY.ToString()))
-                                adjustedMessage = Constants.QUERY.ToString();
-
-                            adjustedMessage += DaqComponents.DIO +
-                                        CurlyBraces.LEFT +
-                                            adjustedPort.ToString() +
-                                                Constants.VALUE_RESOLVER +
-                                                    adjustedBit.ToString() +
-                                                        CurlyBraces.RIGHT;
-
-                            adjustedMessage += property;
-
-                            message = adjustedMessage;
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        return ErrorCodes.InvalidMessage;
-                    }
+                    errorCode = ErrorCodes.InvalidDioBitSpecified;
                 }
+            }
+
+            if (errorCode != ErrorCodes.NoErrors)
+                m_daqDevice.SendMessageToDevice = false;
+
+            return errorCode;
+        }
+
+        //====================================================================================
+        /// <summary>
+        /// Virtual method for processing a direction message
+        /// </summary>
+        /// <param name="message">The device message</param>
+        //====================================================================================
+        internal virtual ErrorCodes ProcessDirectionMessage(ref string message)
+        {
+            int port = MessageTranslator.GetPort(message);
+            double bit = MessageTranslator.GetBit(message);
+            string dir = MessageTranslator.GetPropertyValue(message);
+
+            // get the supported configurations
+            string supportedConfigs = m_daqDevice.GetDevCapsString(String.Format("DIO{0}:CONFIG", MessageTranslator.GetChannelSpecs(port)), false);
+
+            // check for a valid direction value
+            if (dir != PropertyValues.IN && dir != PropertyValues.OUT)
+            {
+                m_daqDevice.SendMessageToDevice = false;
+                return ErrorCodes.InvalidPortConfig;
+            }
+
+            // if device is not programmable but supports the specified direction, 
+            // indicate that it doesn't require configuration
+            if (supportedConfigs.Contains(DevCapImplementations.FIXED) &&
+                supportedConfigs.Contains(dir))
+            {
+                m_daqDevice.SendMessageToDevice = false;
+                return ErrorCodes.PortRequiresNoConfiguration;
+            }
+
+            // check if the direction is supported
+            if (dir == PropertyValues.IN &&
+                !supportedConfigs.Contains(DevCapValues.PORTIN) && !supportedConfigs.Contains(DevCapValues.BITIN))
+            {
+                m_daqDevice.SendMessageToDevice = false;
+                return ErrorCodes.PortIsOutputOnly;
+            }
+
+            // check if the direction is supported
+            if (dir == PropertyValues.OUT &&
+                !supportedConfigs.Contains(DevCapValues.PORTOUT) && !supportedConfigs.Contains(DevCapValues.BITOUT))
+            {
+                m_daqDevice.SendMessageToDevice = false;
+                return ErrorCodes.PortIsInputOnly;
+            }
+
+            if (port >= 0 && bit == -1)
+            {
+                // port only specified
+                if (dir == PropertyValues.IN)
+                    m_configMasks[port] = 0;
+                else
+                    m_configMasks[port] = m_portWidths[port];
+            }
+            else if (bit >= 0 && port >= 0)
+            {
+                // port and bit specified
+                if (dir == PropertyValues.IN)
+                    m_configMasks[port] &= ~(int)Math.Pow(2, bit);
+                else
+                    m_configMasks[port] |= (int)Math.Pow(2, bit);
             }
 
             return ErrorCodes.NoErrors;
         }
-
-        //===========================================================================================
+         
+        //====================================================================================
         /// <summary>
-        /// Validates the port direction
+        /// Virtual method for processing a value message
         /// </summary>
-        /// <param name="message">The message</param>
-        /// <returns>The error code</returns>
-        //===========================================================================================
-        internal virtual ErrorCodes ValidateConfig(ref string message)
+        /// <param name="message">The device message</param>
+        //====================================================================================
+        internal override ErrorCodes ProcessValueSetMessage(ref string message)
         {
-            if (message.Contains(Constants.QUERY.ToString()))
-                return ErrorCodes.NoErrors;
+            ErrorCodes errorCode = ErrorCodes.NoErrors;
 
             int port = MessageTranslator.GetPort(message);
-            int bit = -1;
+            double bit = MessageTranslator.GetBit(message);
+            string dir = MessageTranslator.GetPropertyValue(message);
+            int value;
 
-            // if the message contains "DIO{p/b}, get the bit number
-            if (message.Contains(Constants.VALUE_RESOLVER.ToString()))
-                bit = MessageTranslator.GetBit(message);
+            string supportedConfigs = m_daqDevice.GetDevCapsString(String.Format("DIO{0}:CONFIG", MessageTranslator.GetChannelSpecs(port)), false);
 
-            // check support for bit configuration
-            if (m_supportedConfigurations == String.Empty)
-                m_supportedConfigurations = m_daqDevice.GetDevCapsValue("DIO{" + port + "}:CONFIG", false);
-
-            if (bit >= 0 && !m_supportedConfigurations.Contains(DevCapValues.BITIN) && !m_supportedConfigurations.Contains(DevCapValues.BITOUT))
-                return ErrorCodes.BitConfigurationNotSupported;
-
-            // get the dio direction value
-            string value = MessageTranslator.GetPropertyValue(message);
-
-            if (value == PropertyValues.IN || value == PropertyValues.OUT)
+            if (supportedConfigs.Contains(DevCapImplementations.FIXED) &&
+               (!supportedConfigs.Contains(DevCapValues.PORTOUT) || !supportedConfigs.Contains(DevCapValues.BITOUT)))
             {
-                if (!m_portConfigs.ContainsKey(port))
-                    m_portConfigs.Add(port, value);
+                // digital out not supported
+                errorCode = ErrorCodes.CantWriteDioPort;
+            }
 
-                // store the configuration
-                if (bit >= 0)
+            if (errorCode == ErrorCodes.NoErrors)
+            {
+                if (errorCode == ErrorCodes.NoErrors && PlatformParser.TryParse(dir, out value))
                 {
-                    if (value == PropertyValues.IN)
+                    int maxValue = (int)m_daqDevice.GetDevCapsValue(String.Format("DIO{0}:MAXCOUNT", MessageTranslator.GetChannelSpecs(port)));
+
+                    if (bit == -1)
                     {
-                        m_inMask[port] |= (int)Math.Pow(2, bit);
-                        m_outMask[port] &= ~((int)Math.Pow(2, bit));
+                        // port only specified
+                        if (value < 0 || value > maxValue)
+                            errorCode = ErrorCodes.InvalidDioPortValue;
+                    }
+                    else 
+                    {
+                        if (value < 0 || value > 1)
+                            errorCode = ErrorCodes.InvalidDioBitValue;
+                    }
+
+                    // store the value in case it needs to be restored if the device is lost
+                    if (errorCode == ErrorCodes.NoErrors && bit == -1)
+                    {
+                        m_outputValues[port] = value;
                     }
                     else
                     {
-                        m_outMask[port] |= (int)Math.Pow(2, bit);
-                        m_inMask[port] &= ~((int)Math.Pow(2, bit));
+                        if (value == 0)
+                            m_outputValues[port] &= ~(int)Math.Pow(2, bit);
+                        else
+                            m_outputValues[port] |= (int)Math.Pow(2, bit);
                     }
                 }
                 else
                 {
-                    if (value == PropertyValues.IN)
-                    {
-                        m_inMask[port] = 255;
-                        m_outMask[port] = 0;
-                    }
+                    if (bit == -1)
+                        errorCode = ErrorCodes.InvalidDioPortValue;
                     else
-                    {
-                        m_outMask[port] = 255;
-                        m_inMask[port] = 0;
-                    }
+                        errorCode = ErrorCodes.InvalidDioBitValue;
                 }
-
-                return ErrorCodes.NoErrors;
             }
 
-            return ErrorCodes.InvalidPortConfig;
+            if (errorCode != ErrorCodes.NoErrors)
+                m_daqDevice.SendMessageToDevice = false;
+
+            return errorCode;
         }
 
-        //===========================================================================================
+        //===================================================================================================
         /// <summary>
-        /// Checks the configuration against the requested operation
+        /// Overriden to get the supported messages specific to this Dio component
         /// </summary>
-        /// <param name="message">The message</param>
-        /// <returns>The error code</returns>
-        //===========================================================================================
-        internal virtual ErrorCodes ValidateOperation(ref string message)
+        /// <param name="daqComponent">The Daq Component name - not all implementations require this</param>
+        /// <returns>A list of supported messages</returns>
+        //===================================================================================================
+        internal override List<string> GetMessages(string daqComponent)
         {
-            int port = MessageTranslator.GetPort(message);
-            int bit = MessageTranslator.GetBit(message);
+            List<string> messages = new List<string>();
 
-            m_daqDevice.SendMessageToDevice = true;
+            string config = m_daqDevice.GetDevCapsString("DIO{0}:CONFIG", false);
 
-            if (m_portConfigs.ContainsKey(port))
+            if (config.Contains(DevCapImplementations.PROG))
+                messages.Add("DIO{*}:DIR=*");
+            else if (config.Contains(DevCapImplementations.FIXED))
+                messages.Add("?DIO{*}:DIR");
+
+
+            if (config.Contains(DevCapValues.BITIN) || config.Contains(DevCapValues.BITOUT))
             {
-                // DIn/DBitIn
-                if (message.Contains("?") && message.Contains(DaqProperties.VALUE))
-                {
-                    m_portToReadBack = -1;
-
-                    if (bit >= 0)
-                    {
-                        // if the bit is configured for output read back the last value set
-                        if ((m_outMask[port] & (int)Math.Pow(2, bit)) != 0)
-                        {
-                            ushort bitValue = (ushort)(m_portValues[port] & (int)Math.Pow(2, bit));
-                            bitValue = (ushort)(bitValue >> bit);
-                            string value = message.Substring(message.IndexOf(Constants.QUERY.ToString()) + 1);
-                            value += (Constants.EQUAL_SIGN + bitValue.ToString());
-                            m_daqDevice.ApiResponse = new DaqResponse(value, bitValue);
-                            m_daqDevice.SendMessageToDevice = false;
-                        }
-                    }
-                    else
-                    {
-                        // handle the port readback in PostProcessData
-                        if (m_portConfigs[port] == PropertyValues.OUT)
-                            m_portToReadBack = port;
-                    }
-                }
-                else if (message.Contains(DaqProperties.VALUE))
-
-                {
-                    // DOut/DBitOut
-                    try
-                    {
-                        int value = Int32.Parse(MessageTranslator.GetPropertyValue(message).ToString());
-
-                        if (bit >= 0)
-                        {
-                            // the message contains a port and bit number
-                            if ((m_outMask[port] & (int)Math.Pow(2, bit)) > 0)
-                            {
-                                if (value == 1)
-                                    m_portValues[port] |= (int)Math.Pow(2, bit);
-                                else
-                                    m_portValues[port] &= ~(int)Math.Pow(2, bit);
-                            }
-                            else
-                            {
-                                return ErrorCodes.IncorrectPortConfig;
-                            }
-                        }
-                        else
-                        {
-                            // the message just contains a port number
-                            if (m_outMask[port] == m_dataWidths[port])
-                                m_portValues[port] = value;
-                            else
-                                return ErrorCodes.IncorrectPortConfig;
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        return ErrorCodes.InvalidMessage;
-                    }
-                }
-            }
-            else
-            {
-                // no configuration has been set yet. Default is DIR=IN
-                if (!message.Contains("?") && message.Contains(DaqProperties.VALUE))
-                {
-                    return ErrorCodes.IncorrectPortConfig;
-                }
+                if (config.Contains(DevCapImplementations.PROG))
+                    messages.Add("DIO{*/*}:DIR=*");
+                else if (config.Contains(DevCapImplementations.FIXED))
+                    messages.Add("?DIO{*/*}:DIR");
             }
 
-            return ErrorCodes.NoErrors;
-        }
-
-        //=========================================================================================================
-        /// <summary>
-        /// Overriden to handle readback of a port
-        /// </summary>
-        /// <param name="componentType"></param>
-        /// <param name="response"></param>
-        /// <param name="value"></param>
-        /// <returns></returns>
-        //=========================================================================================================
-        internal override ErrorCodes PostProcessData(string componentType, ref string response, ref double value)
-        {
-            if (m_portToReadBack >= 0)
+            if (config.Contains(DevCapValues.PORTOUT) || config.Contains(DevCapValues.BITOUT))
             {
-                int bits = (int)GetResolution((ulong)m_dataWidths[m_portToReadBack]);
-                int bitValue;
-                int portValue = (int)value;
+                messages.Add("DIO{*}:VALUE=*");
+                messages.Add("DIO{*/*}:VALUE=*");
+            }
 
-                for (int i = 0; i < bits; i++)
+            string latch = m_daqDevice.GetDevCapsString("DIO{0}:LATCH", false);
+
+            if (latch != PropertyValues.NOT_SUPPORTED)
+            {
+                if (latch.Contains(DevCapValues.WRITE))
                 {
-                    if ((m_outMask[m_portToReadBack] & (int)Math.Pow(2, i)) > 0)
-                    {
-                        bitValue = m_portValues[m_portToReadBack] & (int)Math.Pow(2, i);
-                        portValue |= bitValue;
-                    }
+                    messages.Add("DIO{*}:LATCH=*");
+                    messages.Add("DIO{*/*}:LATCH=*");
                 }
 
-                value = portValue;
-
-                int indexOfEqual = response.IndexOf(Constants.EQUAL_SIGN);
-
-                if (indexOfEqual >= 0 && indexOfEqual < (response.Length - 1))
-                    response = response.Remove(indexOfEqual + 1, response.Length - indexOfEqual - 1);
-
-                response += portValue.ToString();
+                messages.Add("?DIO{*}:LATCH");
+                messages.Add("?DIO{*/*}:LATCH");
             }
 
-            return ErrorCodes.NoErrors;
-        }
+            messages.Add("?DIO");
+            messages.Add("?DIO{*}:VALUE");
+            messages.Add("?DIO{*/*}:VALUE");
 
-        //==============================================================================
-        /// <summary>
-        /// normalizes the port and bit number - used by UL interface
-        /// </summary>
-        /// <param name="port">The port number</param>
-        /// <param name="bit">The bit number</param>
-        //==============================================================================
-        internal virtual void ResolvePortBit(ref int port, ref int bit)
-        {
-            if (bit >= (int)m_bitCount)
-                return;
-
-            int index = 0;
-            int width = m_dataWidths[index];
-            int res;
-
-            while ((Math.Pow(2, bit) - 1) >= width)
-            {
-                index++;
-                res = (int)GetResolution((ulong)m_dataWidths[index]);
-                width += (m_dataWidths[index] << res);
-                port = index;
-                bit -= res;
-            }
+            return messages;
         }
     }
 }

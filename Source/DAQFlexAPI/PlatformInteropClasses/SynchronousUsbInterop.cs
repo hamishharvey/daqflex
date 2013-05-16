@@ -24,7 +24,8 @@ namespace MeasurementComputing.DAQFlex
 {
     class SynchronousUsbInterop : UsbPlatformInterop
     {
-        protected int m_bulkXferSize;
+        protected int m_bulkInXferSize;
+        protected int m_bulkOutXferSize;
         protected uint m_inputXferTimeOut;
         protected bool m_dataOverrunOccurred;
         protected Thread m_processBulkInRequests;
@@ -53,14 +54,14 @@ namespace MeasurementComputing.DAQFlex
 			m_readyToStartOutputScan = false;
         }
 
-        //=====================================================================================================
+        //======================================================================================================================
         /// <summary>
         /// Overrides abstract method in base class
         /// </summary>
         /// <param name="deviceInfoList">The list of devices</param>
         /// <param name="deviceInfoList">A flag indicating if the device list should be refreshed</param>
-        //=====================================================================================================
-        internal override ErrorCodes GetUsbDevices(Dictionary<int, DeviceInfo> deviceInfoList, bool refresh)
+        //======================================================================================================================
+        internal override ErrorCodes GetUsbDevices(Dictionary<int, DeviceInfo> deviceInfoList, DeviceListUsage deviceListUsage)
         {
             System.Diagnostics.Debug.Assert(false, "GetUsbDevices not implemented in SynchronousUsbInterop");
             return ErrorCodes.MethodRequiresImplementation;
@@ -154,35 +155,38 @@ namespace MeasurementComputing.DAQFlex
 
             m_inputScanTriggered = false;
 
+            m_totalNumberOfInputBytesTransferred = 0;
+            m_totalNumberOfInputBytesRequested = totalNumberOfBytes;
+
             m_completedBulkInRequestBuffers.Clear();
 
-            m_bulkXferSize = transferSize;
+            m_bulkInXferSize = transferSize;
 
-            if (m_inputSampleMode == SampleMode.Finite)
+            if (m_criticalParams.InputSampleMode == SampleMode.Finite)
             {
                 m_numberOfWorkingInputRequests = 1;
 
                 if (m_criticalParams.InputTransferMode == TransferMode.SingleIO)
                 {
                     int aiChannelCount = m_criticalParams.AiChannelCount;
-                    int byteRatio = (int)Math.Ceiling((double)m_criticalParams.AiDataWidth / (double)Constants.BITS_PER_BYTE);
+                    int byteRatio = m_criticalParams.DataInXferSize;
 
-                    TotalNumberOfInputRequests = totalNumberOfBytes / (byteRatio * aiChannelCount);
+                    m_totalNumberOfInputRequests = totalNumberOfBytes / (byteRatio * aiChannelCount);
                 }
                 else
                 {
                     if (totalNumberOfBytes <= transferSize)
-                        TotalNumberOfInputRequests = 1;
+                        m_totalNumberOfInputRequests = 1;
                     else
-                        TotalNumberOfInputRequests = (int)Math.Ceiling((double)totalNumberOfBytes / (double)transferSize);
+                        m_totalNumberOfInputRequests = (int)Math.Ceiling((double)totalNumberOfBytes / (double)transferSize);
 
-                    if (totalNumberOfBytes % transferSize == 0)
-                        TotalNumberOfInputRequests++;
+                    if (totalNumberOfBytes % m_criticalParams.InputPacketSize == 0)
+                        m_totalNumberOfInputRequests++;
                 }
             }
             else
             {
-                TotalNumberOfInputRequests = 1;
+                m_totalNumberOfInputRequests = 1;
             }
 
             m_stopInputTransfers = false;
@@ -191,8 +195,8 @@ namespace MeasurementComputing.DAQFlex
 
             CreateBulkInRequestObjects();
 
-            NumberOfInputRequestsSubmitted = 0;
-            NumberOfInputRequestsCompleted = 0;
+            m_numberOfInputRequestsSubmitted = 0;
+            m_numberOfInputRequestsCompleted = 0;
 
             m_inputXferTimeOut = 4 * (uint)(1000.0 * ((1.0 / (double)scanRate) * (double)transferSize));
 
@@ -222,6 +226,8 @@ namespace MeasurementComputing.DAQFlex
         {
             m_errorCode = ErrorCodes.NoErrors;
 
+            m_bulkOutXferSize = transferSize;
+
             m_totalBytesReceivedByDevice = 0;
             m_driverInterfaceOutputBufferIndex = 0;
             m_totalNumberOfOutputBytesRequested = totalNumberOfBytes;
@@ -229,10 +235,12 @@ namespace MeasurementComputing.DAQFlex
 			m_totalBytesReceivedByDevice = 0;
 			m_stopOutputTransfers = false;
 
-            if (totalNumberOfBytes >= m_criticalParams.OutputFifoSize)
-                m_numberOfWorkingOutputRequests = Math.Max(4, (int)Math.Ceiling((double)m_criticalParams.OutputFifoSize / (double)transferSize));
-            else
-                m_numberOfWorkingOutputRequests = (int)Math.Ceiling((double)totalNumberOfBytes / (double)transferSize);
+            //if (totalNumberOfBytes >= m_criticalParams.OutputFifoSize)
+            //    m_numberOfWorkingOutputRequests = Math.Max(4, (int)Math.Ceiling((double)m_criticalParams.OutputFifoSize / (double)transferSize));
+            //else
+            //    m_numberOfWorkingOutputRequests = (int)Math.Ceiling((double)totalNumberOfBytes / (double)transferSize);
+
+            m_numberOfWorkingOutputRequests = 1;
 
             CreateBulkOutRequestObjects();
 
@@ -251,150 +259,150 @@ namespace MeasurementComputing.DAQFlex
         {
         }
 
-          //===================================================================================================
+        //===================================================================================================
         /// <summary>
         /// Processes Bulk Out requests
         /// </summary>
         //===================================================================================================
         internal virtual void ProcessBulkOutRequests()
         {
-            Monitor.Enter(m_bulkOutRequestLock);
+            //Monitor.Enter(m_bulkOutRequestLock);
 
-			m_readyToStartOutputScan = false;
-			m_errorCode = ErrorCodes.NoErrors;
+            //m_readyToStartOutputScan = false;
+            //m_errorCode = ErrorCodes.NoErrors;
 
-			OutputTransfersComplete = false;
+            //OutputTransfersComplete = false;
 			
-            if (m_deviceInfo.EndPointIn == 0)
-            {
-                m_errorCode = ErrorCodes.BulkInputTransfersNotSupported;
-                return;
-            }
+            //if (m_deviceInfo.EndPointIn == 0)
+            //{
+            //    m_errorCode = ErrorCodes.BulkInputTransfersNotSupported;
+            //    return;
+            //}
 
-            int bytesTransferred = 0;
-            int status;
+            //int bytesTransferred = 0;
+            //int status;
 
-			// submit data to fill the DAC FIFO
-            foreach (UsbBulkOutRequest br in m_bulkOutRequests)
-            {
-				m_totalNumberOfOutputBytesTransferred += br.BytesRequested;
+            //// submit data to fill the DAC FIFO
+            //foreach (UsbBulkOutRequest br in m_bulkOutRequests)
+            //{
+            //    m_totalNumberOfOutputBytesTransferred += br.BytesRequested;
 
-				status = UsbBulkOutRequest(br, ref bytesTransferred);
+            //    status = UsbBulkOutRequest(br, ref bytesTransferred);
 				
-				if (status == 0)
-				{
-					m_totalBytesReceivedByDevice += bytesTransferred;
-				}
-				else
-				{
-					if (status == -9)
-						System.Diagnostics.Debug.Assert(false, "Underrun error occurred before device was started");
+            //    if (status == 0)
+            //    {
+            //        m_totalBytesReceivedByDevice += bytesTransferred;
+            //    }
+            //    else
+            //    {
+            //        if (status == -9)
+            //            System.Diagnostics.Debug.Assert(false, "Underrun error occurred before device was started");
 					
-					m_errorCode = TranslateErrorCode(status);
+            //        m_errorCode = TranslateErrorCode(status);
 
-                    break;
-				}
-            }
+            //        break;
+            //    }
+            //}
 
-			if (m_errorCode == ErrorCodes.NoErrors)
-			{
-			    // indicate that the device is ready for the "START" command
-			    m_readyToStartOutputScan = true;
+            //if (m_errorCode == ErrorCodes.NoErrors)
+            //{
+            //    // indicate that the device is ready for the "START" command
+            //    m_readyToStartOutputScan = true;
     			
-			    // wait for the device start
-			    while (!m_readyToSubmitRemainingOutputTransfers)
-			    {
-				    Thread.Sleep(1);
-			    }
+            //    // wait for the device start
+            //    while (!m_readyToSubmitRemainingOutputTransfers)
+            //    {
+            //        Thread.Sleep(1);
+            //    }
     			
-			    // submit remaining output transfers
-			    int bytesToTransfer;
-			    int bytesToCopyOnFirstPass;
-			    int bytesToCopyOnSecondPass;
-			    int sourceBufferLength = m_driverInterfaceOutputBuffer.Length;
+            //    // submit remaining output transfers
+            //    int bytesToTransfer;
+            //    int bytesToCopyOnFirstPass;
+            //    int bytesToCopyOnSecondPass;
+            //    int sourceBufferLength = m_driverInterfaceOutputBuffer.Length;
     			
-			    while (m_errorCode == 0 && !m_stopOutputTransfers && !OutputTransfersComplete)
-			    {
-            	    foreach (UsbBulkOutRequest br in m_bulkOutRequests)
-            	    {
-					    bytesToTransfer = br.Buffer.Length;
+            //    while (m_errorCode == 0 && !m_stopOutputTransfers && !OutputTransfersComplete)
+            //    {
+            //        foreach (UsbBulkOutRequest br in m_bulkOutRequests)
+            //        {
+            //            bytesToTransfer = br.Buffer.Length;
     					
-					    if (m_criticalParams.OutputSampleMode == SampleMode.Finite)
-					    {
-						    if (m_totalNumberOfOutputBytesRequested - m_totalNumberOfOutputBytesTransferred < bytesToTransfer)
-							    bytesToTransfer = m_totalNumberOfOutputBytesRequested - m_totalNumberOfOutputBytesTransferred;
-					    }
+            //            if (m_criticalParams.OutputSampleMode == SampleMode.Finite)
+            //            {
+            //                if (m_totalNumberOfOutputBytesRequested - m_totalNumberOfOutputBytesTransferred < bytesToTransfer)
+            //                    bytesToTransfer = m_totalNumberOfOutputBytesRequested - m_totalNumberOfOutputBytesTransferred;
+            //            }
     						
-					    br.BytesRequested = bytesToTransfer;
+            //            br.BytesRequested = bytesToTransfer;
     						
-					    if ((m_criticalParams.OutputSampleMode == SampleMode.Continuous && !m_stopOutputTransfers) ||
-						        (m_criticalParams.OutputSampleMode == SampleMode.Finite && (m_totalNumberOfOutputBytesTransferred < m_totalNumberOfOutputBytesRequested)))
-					    {
-						    if ((m_driverInterfaceOutputBufferIndex + bytesToTransfer) >= sourceBufferLength)
-						    {
-                                // two passes are required since the current input scan write index
-                                // wrapped around to the beginning of the internal read buffer
-                                bytesToCopyOnFirstPass = sourceBufferLength - m_driverInterfaceOutputBufferIndex;
-                                bytesToCopyOnSecondPass = (int)bytesToTransfer - bytesToCopyOnFirstPass;
-						    }
-						    else
-						    {
-                                // only one pass is required since the current input scan write index
-                                // did not wrap around
-                                bytesToCopyOnFirstPass = (int)bytesToTransfer;
-                                bytesToCopyOnSecondPass = 0;
-						    }
+            //            if ((m_criticalParams.OutputSampleMode == SampleMode.Continuous && !m_stopOutputTransfers) ||
+            //                    (m_criticalParams.OutputSampleMode == SampleMode.Finite && (m_totalNumberOfOutputBytesTransferred < m_totalNumberOfOutputBytesRequested)))
+            //            {
+            //                if ((m_driverInterfaceOutputBufferIndex + bytesToTransfer) >= sourceBufferLength)
+            //                {
+            //                    // two passes are required since the current input scan write index
+            //                    // wrapped around to the beginning of the internal read buffer
+            //                    bytesToCopyOnFirstPass = sourceBufferLength - m_driverInterfaceOutputBufferIndex;
+            //                    bytesToCopyOnSecondPass = (int)bytesToTransfer - bytesToCopyOnFirstPass;
+            //                }
+            //                else
+            //                {
+            //                    // only one pass is required since the current input scan write index
+            //                    // did not wrap around
+            //                    bytesToCopyOnFirstPass = (int)bytesToTransfer;
+            //                    bytesToCopyOnSecondPass = 0;
+            //                }
     							
-						    // copy data from driver interface's output buffer and transfer to the device
-						    if (bytesToCopyOnFirstPass > 0)
-                                Array.Copy(m_driverInterfaceOutputBuffer, m_driverInterfaceOutputBufferIndex, br.Buffer, 0, bytesToCopyOnFirstPass);
+            //                // copy data from driver interface's output buffer and transfer to the device
+            //                if (bytesToCopyOnFirstPass > 0)
+            //                    Array.Copy(m_driverInterfaceOutputBuffer, m_driverInterfaceOutputBufferIndex, br.Buffer, 0, bytesToCopyOnFirstPass);
 
-                            m_driverInterfaceOutputBufferIndex += bytesToCopyOnFirstPass;
+            //                m_driverInterfaceOutputBufferIndex += bytesToCopyOnFirstPass;
 
-                            if (m_driverInterfaceOutputBufferIndex >= m_driverInterfaceOutputBuffer.Length)
-                                m_driverInterfaceOutputBufferIndex = 0;
+            //                if (m_driverInterfaceOutputBufferIndex >= m_driverInterfaceOutputBuffer.Length)
+            //                    m_driverInterfaceOutputBufferIndex = 0;
 
-                            if (bytesToCopyOnSecondPass > 0)
-                                Array.Copy(m_driverInterfaceOutputBuffer, m_driverInterfaceOutputBufferIndex, br.Buffer, bytesToCopyOnFirstPass, bytesToCopyOnSecondPass);
+            //                if (bytesToCopyOnSecondPass > 0)
+            //                    Array.Copy(m_driverInterfaceOutputBuffer, m_driverInterfaceOutputBufferIndex, br.Buffer, bytesToCopyOnFirstPass, bytesToCopyOnSecondPass);
 
-                            m_driverInterfaceOutputBufferIndex += bytesToCopyOnSecondPass;
+            //                m_driverInterfaceOutputBufferIndex += bytesToCopyOnSecondPass;
 
-						    m_totalNumberOfOutputBytesTransferred += br.BytesRequested;
+            //                m_totalNumberOfOutputBytesTransferred += br.BytesRequested;
     				
-						    status = UsbBulkOutRequest(br, ref bytesTransferred);
+            //                status = UsbBulkOutRequest(br, ref bytesTransferred);
     				
-						    if (status == 0)
-						    {
-							    m_totalBytesReceivedByDevice += bytesTransferred;
-						    }
-						    else
-						    {
-                                m_errorCode = ErrorCodes.BulkOutTransferError;
+            //                if (status == 0)
+            //                {
+            //                    m_totalBytesReceivedByDevice += bytesTransferred;
+            //                }
+            //                else
+            //                {
+            //                    m_errorCode = ErrorCodes.BulkOutTransferError;
 
-                                break;
-						    }
-					    }
-					    else if (m_criticalParams.OutputSampleMode == SampleMode.Finite)
-					    {
-						    if (m_totalNumberOfOutputBytesTransferred == m_totalNumberOfOutputBytesRequested)
-						    {
-							    OutputTransfersComplete = true;
-							    break;
-						    }
-					    }
-				    }
+            //                    break;
+            //                }
+            //            }
+            //            else if (m_criticalParams.OutputSampleMode == SampleMode.Finite)
+            //            {
+            //                if (m_totalNumberOfOutputBytesTransferred == m_totalNumberOfOutputBytesRequested)
+            //                {
+            //                    OutputTransfersComplete = true;
+            //                    break;
+            //                }
+            //            }
+            //        }
     				
-				    Thread.Sleep(1);
-			    }
-			}
-			// exiting
+            //        Thread.Sleep(1);
+            //    }
+            //}
+            //// exiting
 			
-			m_readyToStartOutputScan = false;
+            //m_readyToStartOutputScan = false;
 
-            if (m_errorCode != ErrorCodes.NoErrors)
-                OnOutputErrorCleanup();
+            //if (m_errorCode != ErrorCodes.NoErrors)
+            //    OnOutputErrorCleanup();
 			
-            Monitor.Exit(m_bulkOutRequestLock);
+            //Monitor.Exit(m_bulkOutRequestLock);
         }
 
 		//=================================================================================
@@ -476,14 +484,14 @@ namespace MeasurementComputing.DAQFlex
 
             do
             {
-                result = m_errorCode;
+                result = m_inputScanErrorCode;
 
                 if (result != ErrorCodes.NoErrors)
                     break;
 
-                if (this.m_bulkInCompletedBuffers.Count > 0)
-                    bulkInBuffer = QueueBulkInCompletedBuffers(null, QueueAction.Dequeue);
-                else
+                bulkInBuffer = QueueBulkInCompletedBuffers(null, QueueAction.Dequeue);
+
+                if (bulkInBuffer == null)
                     Thread.Sleep(1);
 
             } while (bulkInBuffer == null && !m_stopInputTransfers);

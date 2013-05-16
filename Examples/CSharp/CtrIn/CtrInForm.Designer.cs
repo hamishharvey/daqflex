@@ -108,13 +108,16 @@
             // 
             // counterComboBox
             // 
+            this.counterComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.counterComboBox.Location = new System.Drawing.Point(86, 41);
             this.counterComboBox.Name = "counterComboBox";
             this.counterComboBox.Size = new System.Drawing.Size(107, 21);
             this.counterComboBox.TabIndex = 20;
+            this.counterComboBox.SelectedIndexChanged += new System.EventHandler(this.OnCounterChanged);
             // 
             // deviceComboBox
             // 
+            this.deviceComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.deviceComboBox.Location = new System.Drawing.Point(86, 11);
             this.deviceComboBox.Name = "deviceComboBox";
             this.deviceComboBox.Size = new System.Drawing.Size(242, 21);

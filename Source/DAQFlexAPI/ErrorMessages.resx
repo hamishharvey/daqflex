@@ -185,7 +185,7 @@
     <value>An invalid device serial number was specified.</value>
   </data>
   <data name="InvalidDioPortSpecified" xml:space="preserve">
-    <value>An invalid digital I/O port was specified.</value>
+    <value>An invalid digital port was specified.</value>
   </data>
   <data name="InvalidPropertySpecified" xml:space="preserve">
     <value>The device does not support the property specified.</value>
@@ -370,13 +370,148 @@
   <data name="DaqDeviceListNotEmpty" xml:space="preserve">
     <value>One or more DaqDevice objects need to be released before calling GetDeviceNames.</value>
   </data>
+  <data name="InputBufferCannotBeSet" xml:space="preserve">
+    <value>The size of the input buffer cannot be set while an input scan is running.</value>
+  </data>
+  <data name="OutputBufferCannotBeSet" xml:space="preserve">
+    <value>The size of the output buffer cannot be set while an output scan is running.</value>
+  </data>
+  <data name="InvalidDioBitValue" xml:space="preserve">
+    <value>An invalid digital bit value was specified.</value>
+  </data>
+  <data name="InvalidDioPortValue" xml:space="preserve">
+    <value>An invalid digital port value was specified.</value>
+  </data>
+  <data name="PortIsInputOnly" xml:space="preserve">
+    <value>The specified port cannot be configured for output.</value>
+  </data>
+  <data name="PortIsOutputOnly" xml:space="preserve">
+    <value>The specified port cannot be configured for input.</value>
+  </data>
+  <data name="PortRequiresNoConfiguration" xml:space="preserve">
+    <value>The specified port does not require configuration.</value>
+  </data>
+  <data name="DioBitNotSetForOutput" xml:space="preserve">
+    <value>The specified digital bit is not configured for output.</value>
+  </data>
+  <data name="DioPortNotSetForOutput" xml:space="preserve">
+    <value>The specified digital port is not configured for output.</value>
+  </data>
+  <data name="InvalidTimerDelay" xml:space="preserve">
+    <value>An invalid timer delay was specified.</value>
+  </data>
+  <data name="InvalidTimerDutyCycle" xml:space="preserve">
+    <value>An invalid timer duty cycle was specified.</value>
+  </data>
+  <data name="InvalidTimerPeriod" xml:space="preserve">
+    <value>An invalid timer period was specified.</value>
+  </data>
+  <data name="InvalidCalValue" xml:space="preserve">
+    <value>An invalid value for the CAL option was specified.</value>
+  </data>
+  <data name="FpgaNotLoaded" xml:space="preserve">
+    <value>The device's FPGA could not be loaded.</value>
+  </data>
+  <data name="AiCalibrationInProgress" xml:space="preserve">
+    <value>An Ai calibration is in progress.</value>
+  </data>
+  <data name="AoCalibrationInProgress" xml:space="preserve">
+    <value>An Ao calibration is in progress.</value>
+  </data>
+  <data name="MaxAiCalOffsetValueReached" xml:space="preserve">
+    <value>Error: The maximum analog input calibration offset has been reached.</value>
+  </data>
+  <data name="MaxAiCalSlopeValueReached" xml:space="preserve">
+    <value>Error: The maximum analog input calibration slope has been reached.</value>
+  </data>
+  <data name="MinAiCalOffsetValueReached" xml:space="preserve">
+    <value>Error: The minimum analog input calibration offset has been reached.</value>
+  </data>
+  <data name="MinAiCalSlopeValueReached" xml:space="preserve">
+    <value>Error: The minimum analog input calibration slope has been reached.</value>
+  </data>
+  <data name="InvalidAdAvgValue" xml:space="preserve">
+    <value>An invalid A/D averaging value was specified.</value>
+  </data>
+  <data name="InvalidAdSettlingTime" xml:space="preserve">
+    <value>An invalid A/D settling time was specified.</value>
+  </data>
+  <data name="InputBufferOverrun" xml:space="preserve">
+    <value>Input scan data was overwritten before being read.</value>
+  </data>
+  <data name="InvalidBufferOverwrite" xml:space="preserve">
+    <value>An invalid buffer overwrite value was specified.</value>
+  </data>
+  <data name="InvalidAiTriggerLevel" xml:space="preserve">
+    <value>An invalid analog input trigger level was specified.</value>
+  </data>
+  <data name="InvalidQueueElement" xml:space="preserve">
+    <value>An invalid queue element was specified.</value>
+  </data>
+  <data name="InvalidAiTriggerChannel" xml:space="preserve">
+    <value>An invalid analog input trigger channel was specified.</value>
+  </data>
+  <data name="InvalidAiTriggerSource" xml:space="preserve">
+    <value>An invalid analog input trigger source was specified.</value>
+  </data>
+  <data name="InvalidDataRate" xml:space="preserve">
+    <value>An invalid data rate was specified.</value>
+  </data>
   <data name="BurstIoInProgress" xml:space="preserve">
     <value>Only the STATUS, COUNT, INDEX and STOP messages may be sent to the device while a BURSTIO scan is in progress.</value>
   </data>
   <data name="InvalidSampleCountForBurstIo" xml:space="preserve">
     <value>Invalid sample count for BURSTIO transfer mode.</value>
   </data>
+  <data name="DuplicateChannelsNotSupportedInQueue" xml:space="preserve">
+    <value>Duplicate channels are not supported by the analog input queue.</value>
+  </data>
   <data name="LibusbBulkTransferInterrupted" xml:space="preserve">
     <value>A bulk transfer was interrupted by the system.</value>
+  </data>
+  <data name="DeviceHandleIsNull" xml:space="preserve">
+    <value>The device handle is null.</value>
+  </data>
+  <data name="DeviceHasBeenReleased" xml:space="preserve">
+    <value>The device handle has been released. Use DaqDeviceManager.CreateDevice to recreate the device handle.</value>
+  </data>
+  <data name="ActiveChannelsNotSet" xml:space="preserve">
+    <value>Internal error - couldn't set active channels.</value>
+  </data>
+  <data name="NoncontiguousChannelsSpecified" xml:space="preserve">
+    <value>Non-continuous channels may only be used when the queue is enabled.</value>
+  </data>
+  <data name="InvalidDateTime" xml:space="preserve">
+    <value>The date/time returned from the device is invalid.</value>
+  </data>
+  <data name="OutputBufferTooSmallForContinuousScan" xml:space="preserve">
+    <value>The output buffer size is too small for continuous scanning. The size should be set to at least the output FIFO size.</value>
+  </data>
+  <data name="InvalidValueResolver" xml:space="preserve">
+    <value>The units requested are not valid for the selected channel mode</value>
+  </data>
+  <data name="UsbBulkReadError" xml:space="preserve">
+    <value>A USB bulk read error occurred.</value>
+  </data>
+  <data name="UsbBulkWriteError" xml:space="preserve">
+    <value>A USB bulk write error occurred.</value>
+  </data>
+  <data name="UsbPipeError" xml:space="preserve">
+    <value>A USB pipe error occurred.</value>
+  </data>
+  <data name="NonsequentialChannelsNotSupportedInQueue" xml:space="preserve">
+    <value>Non-sequential channels are not supported by the analog input queue.</value>
+  </data>
+  <data name="InvalidInputBlockSize" xml:space="preserve">
+    <value>An invalid input block size was specified.</value>
+  </data>
+  <data name="CantWriteDioPort" xml:space="preserve">
+    <value>The specified digital port is not an output port and cannot be written to.</value>
+  </data>
+  <data name="NonAdjacentNonAscendingChannelsNotSupportedInQueue" xml:space="preserve">
+    <value>Channels must be in adjacent, ascending order when the analog input queue is enabled.</value>
+  </data>
+  <data name="NonAscendingChannelsNotSupportedInQueue" xml:space="preserve">
+    <value>Channels must be in ascending order when the analog input queue is enabled.</value>
   </data>
 </root>

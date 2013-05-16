@@ -45,15 +45,20 @@
             this.label2 = new System.Windows.Forms.Label();
             this.samplePeriodNumericUpDown = new System.Windows.Forms.NumericUpDown();
             this.label5 = new System.Windows.Forms.Label();
+            this.channelModeComboBox = new System.Windows.Forms.ComboBox();
+            this.label7 = new System.Windows.Forms.Label();
+            this.statusLabel = new System.Windows.Forms.Label();
             ((System.ComponentModel.ISupportInitialize)(this.samplePeriodNumericUpDown)).BeginInit();
             this.SuspendLayout();
             // 
             // channelComboBox
             // 
+            this.channelComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.channelComboBox.Location = new System.Drawing.Point(15, 61);
             this.channelComboBox.Name = "channelComboBox";
             this.channelComboBox.Size = new System.Drawing.Size(121, 21);
             this.channelComboBox.TabIndex = 81;
+            this.channelComboBox.SelectedIndexChanged += new System.EventHandler(this.OnChannelChanged);
             // 
             // label4
             // 
@@ -66,6 +71,7 @@
             // 
             // deviceComboBox
             // 
+            this.deviceComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.deviceComboBox.Location = new System.Drawing.Point(176, 15);
             this.deviceComboBox.Name = "deviceComboBox";
             this.deviceComboBox.Size = new System.Drawing.Size(251, 21);
@@ -82,7 +88,7 @@
             // 
             // descriptionTextBox
             // 
-            this.descriptionTextBox.Location = new System.Drawing.Point(176, 132);
+            this.descriptionTextBox.Location = new System.Drawing.Point(176, 154);
             this.descriptionTextBox.Multiline = true;
             this.descriptionTextBox.Name = "descriptionTextBox";
             this.descriptionTextBox.Size = new System.Drawing.Size(251, 93);
@@ -92,7 +98,7 @@
             // okButton
             // 
             this.okButton.DialogResult = System.Windows.Forms.DialogResult.OK;
-            this.okButton.Location = new System.Drawing.Point(365, 235);
+            this.okButton.Location = new System.Drawing.Point(365, 282);
             this.okButton.Name = "okButton";
             this.okButton.Size = new System.Drawing.Size(62, 23);
             this.okButton.TabIndex = 78;
@@ -101,7 +107,7 @@
             // label6
             // 
             this.label6.BackColor = System.Drawing.Color.Transparent;
-            this.label6.Location = new System.Drawing.Point(176, 114);
+            this.label6.Location = new System.Drawing.Point(176, 136);
             this.label6.Name = "label6";
             this.label6.Size = new System.Drawing.Size(123, 25);
             this.label6.TabIndex = 84;
@@ -109,7 +115,7 @@
             // 
             // browseButton
             // 
-            this.browseButton.Location = new System.Drawing.Point(394, 84);
+            this.browseButton.Location = new System.Drawing.Point(394, 106);
             this.browseButton.Name = "browseButton";
             this.browseButton.Size = new System.Drawing.Size(33, 23);
             this.browseButton.TabIndex = 77;
@@ -118,7 +124,8 @@
             // 
             // tcTypeComboBox
             // 
-            this.tcTypeComboBox.Location = new System.Drawing.Point(15, 106);
+            this.tcTypeComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.tcTypeComboBox.Location = new System.Drawing.Point(15, 154);
             this.tcTypeComboBox.Name = "tcTypeComboBox";
             this.tcTypeComboBox.Size = new System.Drawing.Size(121, 21);
             this.tcTypeComboBox.TabIndex = 72;
@@ -126,7 +133,7 @@
             // 
             // logFileTextBox
             // 
-            this.logFileTextBox.Location = new System.Drawing.Point(176, 86);
+            this.logFileTextBox.Location = new System.Drawing.Point(176, 108);
             this.logFileTextBox.Name = "logFileTextBox";
             this.logFileTextBox.Size = new System.Drawing.Size(207, 20);
             this.logFileTextBox.TabIndex = 75;
@@ -135,7 +142,7 @@
             // logDataCheckBox
             // 
             this.logDataCheckBox.BackColor = System.Drawing.Color.Transparent;
-            this.logDataCheckBox.Location = new System.Drawing.Point(176, 63);
+            this.logDataCheckBox.Location = new System.Drawing.Point(176, 85);
             this.logDataCheckBox.Name = "logDataCheckBox";
             this.logDataCheckBox.Size = new System.Drawing.Size(105, 17);
             this.logDataCheckBox.TabIndex = 76;
@@ -145,7 +152,8 @@
             // 
             // tcUnitsComboBox
             // 
-            this.tcUnitsComboBox.Location = new System.Drawing.Point(15, 152);
+            this.tcUnitsComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.tcUnitsComboBox.Location = new System.Drawing.Point(15, 200);
             this.tcUnitsComboBox.Name = "tcUnitsComboBox";
             this.tcUnitsComboBox.Size = new System.Drawing.Size(121, 21);
             this.tcUnitsComboBox.TabIndex = 73;
@@ -154,7 +162,7 @@
             // label1
             // 
             this.label1.BackColor = System.Drawing.Color.Transparent;
-            this.label1.Location = new System.Drawing.Point(12, 132);
+            this.label1.Location = new System.Drawing.Point(12, 180);
             this.label1.Name = "label1";
             this.label1.Size = new System.Drawing.Size(94, 17);
             this.label1.TabIndex = 85;
@@ -163,7 +171,7 @@
             // label2
             // 
             this.label2.BackColor = System.Drawing.Color.Transparent;
-            this.label2.Location = new System.Drawing.Point(12, 87);
+            this.label2.Location = new System.Drawing.Point(12, 135);
             this.label2.Name = "label2";
             this.label2.Size = new System.Drawing.Size(102, 24);
             this.label2.TabIndex = 86;
@@ -171,7 +179,7 @@
             // 
             // samplePeriodNumericUpDown
             // 
-            this.samplePeriodNumericUpDown.Location = new System.Drawing.Point(15, 201);
+            this.samplePeriodNumericUpDown.Location = new System.Drawing.Point(15, 249);
             this.samplePeriodNumericUpDown.Maximum = new decimal(new int[] {
             600,
             0,
@@ -195,17 +203,47 @@
             // label5
             // 
             this.label5.BackColor = System.Drawing.Color.Transparent;
-            this.label5.Location = new System.Drawing.Point(12, 183);
+            this.label5.Location = new System.Drawing.Point(12, 231);
             this.label5.Name = "label5";
             this.label5.Size = new System.Drawing.Size(148, 15);
             this.label5.TabIndex = 87;
             this.label5.Text = "Sample Period (sec)";
             // 
+            // channelModeComboBox
+            // 
+            this.channelModeComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.channelModeComboBox.Location = new System.Drawing.Point(15, 107);
+            this.channelModeComboBox.Name = "channelModeComboBox";
+            this.channelModeComboBox.Size = new System.Drawing.Size(121, 21);
+            this.channelModeComboBox.TabIndex = 88;
+            this.channelModeComboBox.SelectedIndexChanged += new System.EventHandler(this.OnChannelModeChanged);
+            // 
+            // label7
+            // 
+            this.label7.BackColor = System.Drawing.Color.Transparent;
+            this.label7.Location = new System.Drawing.Point(12, 88);
+            this.label7.Name = "label7";
+            this.label7.Size = new System.Drawing.Size(102, 24);
+            this.label7.TabIndex = 89;
+            this.label7.Text = "Channel Mode";
+            // 
+            // statusLabel
+            // 
+            this.statusLabel.AutoSize = true;
+            this.statusLabel.Location = new System.Drawing.Point(12, 282);
+            this.statusLabel.Name = "statusLabel";
+            this.statusLabel.Size = new System.Drawing.Size(35, 13);
+            this.statusLabel.TabIndex = 90;
+            this.statusLabel.Text = "label8";
+            // 
             // SetupDlg
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(439, 273);
+            this.ClientSize = new System.Drawing.Size(439, 317);
+            this.Controls.Add(this.statusLabel);
+            this.Controls.Add(this.channelModeComboBox);
+            this.Controls.Add(this.label7);
             this.Controls.Add(this.channelComboBox);
             this.Controls.Add(this.label4);
             this.Controls.Add(this.deviceComboBox);
@@ -224,6 +262,7 @@
             this.Controls.Add(this.label5);
             this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog;
             this.Name = "SetupDlg";
+            this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
             this.Text = "SetupDlg";
             ((System.ComponentModel.ISupportInitialize)(this.samplePeriodNumericUpDown)).EndInit();
             this.ResumeLayout(false);
@@ -250,6 +289,9 @@
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.NumericUpDown samplePeriodNumericUpDown;
         private System.Windows.Forms.Label label5;
+        private System.Windows.Forms.ComboBox channelModeComboBox;
+        private System.Windows.Forms.Label label7;
+        private System.Windows.Forms.Label statusLabel;
 
     }
 }

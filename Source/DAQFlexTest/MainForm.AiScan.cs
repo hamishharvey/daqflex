@@ -10,12 +10,10 @@ namespace MeasurementComputing.DAQFlex.Test
     {
         private int m_aiScanSamples = 0;
         private string m_transferMode;
-        private int m_lowAiChannel;
-        private int m_highAiChannel;
-        private int m_aiScanRate;
+        private double m_aiScanRate;
         private bool m_stopAiScan;
-        private int m_timeout = 0;
         private bool m_queueEnabled;
+        private int m_timeout;
          
         //==============================================================================
         /// <summary>
@@ -31,23 +29,24 @@ namespace MeasurementComputing.DAQFlex.Test
                 aiScanMessageComboBox.Enabled = true;
                 aiScanSendMessageButton.Enabled = true;
 
+                // get a list of supported messages for the analog input trigger component
+                commands.AddRange(m_daqDevice.GetSupportedMessages("AITRIG"));
+                
+                // get a list of supported messages for the analog input queue component
+                commands.AddRange(m_daqDevice.GetSupportedMessages("AIQUEUE"));
+
+                // all commands are in the list, now sort them
+                commands.Sort();
+
                 // add the messages to the message combobox
                 foreach (string command in commands)
-                    aiScanMessageComboBox.Items.Add(command);
-
-                // get a list of supported messages for the analog input component
-                List<string> trigCommands = m_daqDevice.GetSupportedMessages("AITRIG");
-
-                // add the messages to the message combobox
-                foreach (string command in trigCommands)
                     aiScanMessageComboBox.Items.Add(command);
 
                 aiScanMessageComboBox.SelectedIndex = 0;
 
                 // set defaults
-
-
                 string message;
+                string response;
 
                 try
                 {
@@ -63,9 +62,20 @@ namespace MeasurementComputing.DAQFlex.Test
                 // might want to query these from the device and resend them
                 // so the values match the device's defaults and also matches
                 // the critical params
-                message = "AISCAN:XFRMODE=BLOCKIO";
-                m_daqDevice.SendMessage(message);
-                SetAiScanCriticalParams(message);
+                message = "@AISCAN:XFRMODES";
+                response = m_daqDevice.SendMessage(message).ToString();
+                 
+                if (response.Contains("FIXED"))
+                {
+                    m_transferMode = m_daqDevice.SendMessage("?AISCAN:XFRMODE").ToString();
+                }
+                else
+                {
+                    message = "AISCAN:XFRMODE=BLOCKIO";
+                    m_daqDevice.SendMessage(message);
+                    SetAiScanCriticalParams(message);
+                }
+
                 message = "AISCAN:LOWCHAN=0";
                 m_daqDevice.SendMessage(message);
                 SetAiScanCriticalParams(message);
@@ -115,20 +125,35 @@ namespace MeasurementComputing.DAQFlex.Test
                     // log message
                     m_messageLog.LogMessage(message, m_messageLogClosed);
 #endif
+
+                    int channelCount = 0;
+
+                    if (message.Contains("START"))
+                    {
+                        int lowChan = (int)m_daqDevice.SendMessage("?AISCAN:LOWCHAN").ToValue();
+                        int highChan = (int)m_daqDevice.SendMessage("?AISCAN:HIGHCHAN").ToValue();
+
+                        if (!m_queueEnabled)
+                            channelCount = highChan - lowChan + 1;
+                        else
+                            channelCount = GetChannelCountFromQueue();
+
+                        string extPacerSupported = m_daqDevice.SendMessage("@AISCAN:EXTPACER").ToString();
+                        if (!extPacerSupported.Contains("NOT_SUPPORTED"))
+                        {
+                            string extPacer = m_daqDevice.SendMessage("?AISCAN:EXTPACER").ToString();
+
+                            if (extPacer.Contains("ENABLE"))
+                                m_timeout = 0;
+                        }
+                    }
+
                     // send the message to the device
                     DaqResponse response = m_daqDevice.SendMessage(message);
 
                     // display the response
                     aiScanResponseTextBox.Text = response.ToString();
                     Application.DoEvents();
-
-                    // calculate the channel count
-                    int channelCount;
-
-                    if (!m_queueEnabled)
-                        channelCount = m_highAiChannel - m_lowAiChannel + 1;
-                    else
-                        channelCount = GetChannelCountFromQueue();
 
                     // if the start message was sent then read the data
                     if (message.Contains("START"))
@@ -167,7 +192,18 @@ namespace MeasurementComputing.DAQFlex.Test
 
         private int GetChannelCountFromQueue()
         {
-            string response = m_daqDevice.SendMessage("?AISCAN:RANGE").ToString();
+            string response;
+
+            try
+            {
+                // new queue method
+                response = m_daqDevice.SendMessage("?AIQUEUE:COUNT").ToString();
+            }
+            catch (Exception)
+            {
+                response = m_daqDevice.SendMessage("?AISCAN:RANGE").ToString();
+            }
+
             return Convert.ToInt32(response.Substring(response.IndexOf("=") + 1));
         }
 
@@ -188,7 +224,7 @@ namespace MeasurementComputing.DAQFlex.Test
             {
                 // continuous mode
                 m_stopAiScan = false;
-                samples = Math.Min(m_aiScanRate / 2, 64);
+                samples = (int)Math.Min(m_aiScanRate / 2, 64);
             }
             else
             {
@@ -240,7 +276,7 @@ namespace MeasurementComputing.DAQFlex.Test
             {
                 // continuous mode
                 m_stopAiScan = false;
-                samples = Math.Min(m_aiScanRate / 2, 64);
+                samples = (int)Math.Min(m_aiScanRate / 2, 64);
             }
             else
             {
@@ -289,28 +325,23 @@ namespace MeasurementComputing.DAQFlex.Test
             if (message.Contains("SAMPLES="))
             {
                 m_aiScanSamples = Convert.ToInt32(message.Substring(message.IndexOf('=') + 1));
+                SetTimeout();
             }
 
             // save the transfer mode
             else if (message.Contains("XFRMODE"))
             {
                 m_transferMode = message;
+                SetTimeout();
             }
-
-            // save the low channel
-            else if (message.Contains("LOWCHAN"))
-                m_lowAiChannel = GetChannel(message);
-
-            // save the low channel
-            else if (message.Contains("HIGHCHAN"))
-                m_highAiChannel = GetChannel(message);
 
             else if (message.Contains("STOP"))
                 m_stopAiScan = true;
 
             else if (message.Contains("RATE="))
             {
-                m_aiScanRate = Convert.ToInt32(message.Substring(message.IndexOf('=') + 1));
+                m_aiScanRate = Convert.ToDouble(message.Substring(message.IndexOf('=') + 1));
+                SetTimeout();
             }
 
             else if (message.Contains("QUEUE"))
@@ -320,6 +351,16 @@ namespace MeasurementComputing.DAQFlex.Test
                 else
                     m_queueEnabled = false;
             }
+        }
+
+        private void SetTimeout()
+        {
+            if (m_transferMode.Contains("SINGLEIO"))
+                m_timeout = (int)(10000.0 * (1.0 / (double)m_aiScanRate));
+            else if (m_transferMode.Contains("BLOCKIO"))
+                m_timeout = (int)(3000.0 * ((double)m_aiScanSamples / (double)m_aiScanRate));
+            else
+                m_timeout = (int)Math.Max(50, (3000.0 * ((double)m_aiScanSamples / (double)m_aiScanRate)));
         }
     }
 }
