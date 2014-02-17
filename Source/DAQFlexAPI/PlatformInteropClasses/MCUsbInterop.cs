@@ -646,7 +646,17 @@ namespace MeasurementComputing.DAQFlex
                 if (m_criticalParams.InputTransferMode == TransferMode.SingleIO)
                 {
                     request.Buffer = new byte[byteRatio * channelCount];
-                    request.BytesRequested = byteRatio * channelCount;
+
+                    if (m_criticalParams.NumberOfSamplesForSingleIO > 1)
+                    {
+                            // use n bytes per channel...
+                        request.BytesRequested = byteRatio * channelCount;
+                    }
+                    else
+                    {
+                            // only n bytes per transfer regardless of channel count...
+                        request.BytesRequested = byteRatio;
+                    }
                 }
                 else
                 {
@@ -831,6 +841,14 @@ namespace MeasurementComputing.DAQFlex
             m_totalNumberOfInputBytesTransferred = 0;
 
             base.PrepareInputTransfers(scanRate, totalNumberOfBytes, transferSize);
+
+            m_dataReceivedDebugList.Clear();
+            m_dataSubmittedDebugList.Clear();
+
+            for (int i = 0; i < m_numberOfQueuedInputRequests; i++)
+            {
+                m_dataSubmittedDebugList.Add(String.Format(">>>>> Submitting request {0}", i));
+            }
         }
 
         //===========================================================================================
@@ -879,7 +897,7 @@ namespace MeasurementComputing.DAQFlex
 
             m_totalNumberOfInputBytesTransferred += request.BytesRequested;
 
-            //DebugLogger.WriteLine("Submitting bulk in request - {0} bytes ", request.BytesRequested);
+            //DebugLogger.WriteLine("Submitting bulk in index# {0}, request# {1}  ", request.Index, request.RequestNumber);
 
             result = McUsb_ReadPipe(m_deviceHandle,
                                     m_deviceInfo.EndPointIn,
@@ -969,6 +987,8 @@ namespace MeasurementComputing.DAQFlex
             return result;
         }
 
+        private List<string> m_dataSubmittedDebugList = new List<string>();
+        private List<string> m_dataReceivedDebugList = new List<string>();
 
         //===================================================================================================
         /// <summary>
@@ -982,8 +1002,6 @@ namespace MeasurementComputing.DAQFlex
         protected void CompleteBulkInRequest(uint errorCode, uint numBytes, NativeOverlapped* nativeOverlapped)
         {
             Monitor.Enter(m_inputTransferCompletionLock);
-
-            //System.Diagnostics.Debug.WriteLine(String.Format("Bulk In completed - {0} bytes received - error {1}", numBytes, errorCode));
 
             m_numberOfInputRequestsCompleted++;
 
@@ -1000,7 +1018,9 @@ namespace MeasurementComputing.DAQFlex
                         {
                             bulkInRequest = request;
 
-                            // get a buffer off the Ready Queue
+                            DebugLogger.WriteLine("Received request - index # {0}, value = {1}", bulkInRequest.Index, bulkInRequest.Buffer[0] + ( 256 * bulkInRequest.Buffer[1]));
+
+                                // get a buffer off the Ready Queue...
                             BulkInBuffer bulkInBuffer = null;
 
                             while (bulkInBuffer == null)
@@ -1013,12 +1033,79 @@ namespace MeasurementComputing.DAQFlex
                                 }
                             }
 
-                            // copy the data into the buffer that was just dequeued
+                                // copy the index...
+                            bulkInBuffer.Index = bulkInRequest.Index;
+
+                                // copy the data...
                             Array.Copy(bulkInRequest.Buffer, bulkInBuffer.Data, numBytes);
+
+                                // set the number of bytes...
                             bulkInBuffer.Length = (int)numBytes;
 
-                            // now add the buffer to the Completed Queue
-                            QueueBulkInCompletedBuffers(bulkInBuffer, QueueAction.Enqueue);
+                            //DebugLogger.WriteLine("Expected transfer index = {0}", m_expectedInputTransferIndex);
+
+                            if (bulkInRequest.Index == m_expectedInputTransferIndex)
+                            {
+                                //DebugLogger.WriteLine("Putting buffer {0} onto the completed queue", bulkInBuffer.Index);
+                                
+                                    // if this is the correct index then add the buffer to the Completed Queue...
+                                //DebugLogger.WriteLine("Queueing buffer {0} into the completed buffer queue", bulkInBuffer.Index);
+                                QueueBulkInCompletedBuffers(bulkInBuffer, QueueAction.Enqueue);
+
+                                //    // log the expected index...
+                                //DebugLogger.WriteLine("Expected index = {0}", m_expectedInputTransferIndex);
+
+                                    // increment the expected index...
+                                m_expectedInputTransferIndex++;
+
+                                    // reset it when it reaches the number of working input requests...
+                                if (m_expectedInputTransferIndex == m_numberOfWorkingInputRequests)
+                                {
+                                    m_expectedInputTransferIndex = 0;
+                                }
+                            }
+                            else
+                            {
+                                //*********************************************************************************
+                                // the temporary buffer is used to manage data packets that may be out of order
+                                // some devices single io mode may transfer unordered packets
+                                //*********************************************************************************
+                                
+                                    // add it to the temporary buffer...
+                                m_temporaryBuffer.Add(bulkInBuffer);
+
+                                System.Diagnostics.Debug.WriteLine(String.Format("packets out of order index = {0}, expected index ={1}", bulkInRequest.Index, m_expectedInputTransferIndex));
+                                //System.Diagnostics.Debug.Assert(bulkInRequest.Index == m_expectedInputTransferIndex, "[DAQFlex.MCUsbInterop] Bulk transfer packet is out of order");
+                            }
+
+                            if (m_temporaryBuffer.Count > 0)
+                            {
+                                //return;
+
+                                // keep the following code here in case we need to use it later on...
+
+                                    // let's see if there's a buffer whose index is the expected index in the temporary buffer...
+                                BulkInBuffer nextBuffer = m_temporaryBuffer.Find(NextBuffer(m_expectedInputTransferIndex));
+
+                                if (nextBuffer != null)
+                                {
+                                        // now put it in the completed queue...
+                                    //DebugLogger.WriteLine("Queueing buffer {0}", nextBuffer.Index);
+                                    QueueBulkInCompletedBuffers(nextBuffer, QueueAction.Enqueue);
+
+                                        // now take if out of the list...
+                                    m_temporaryBuffer.Remove(nextBuffer);
+
+                                        // increment the expected index...
+                                    m_expectedInputTransferIndex++;
+
+                                        // reset it when it reaches the number of working input requests...
+                                    if (m_expectedInputTransferIndex == m_numberOfWorkingInputRequests)
+                                    {
+                                        m_expectedInputTransferIndex = 0;
+                                    }
+                                }
+                            }
 
                             break;
                         }
@@ -1047,6 +1134,8 @@ namespace MeasurementComputing.DAQFlex
                                 //    m_lastInputRequestSubmitted.Next.BytesRequested = m_totalNumberOfInputBytesRequested - m_totalNumberOfInputBytesTransferred;
 
                                 // Finite scan not complete yet
+                                //DebugLogger.WriteLine("Submitting request {0}", m_lastInputRequestSubmitted.Next.Index);
+
                                 SubmitBulkInRequest(m_lastInputRequestSubmitted.Next);
                             }
                         }
@@ -1080,6 +1169,15 @@ namespace MeasurementComputing.DAQFlex
             }
 
             Monitor.Exit(m_inputTransferCompletionLock);
+        }
+
+
+        static Predicate<BulkInBuffer> NextBuffer(int expectedIndex)
+        {
+            return delegate(BulkInBuffer buffer)
+            {
+                return buffer.Index == expectedIndex;
+            };
         }
 
         //===================================================================================================
@@ -1382,7 +1480,7 @@ namespace MeasurementComputing.DAQFlex
 
             foreach (KeyValuePair<int, DeviceInfo> kvp in deviceInfoList)
             {
-                existingDevices.Add(kvp.Key, kvp.Value);
+                existingDevices.Add(kvp.Value.DeviceNumber, kvp.Value);
             }
 
             deviceNumber = existingDevices.Count;
@@ -1459,12 +1557,13 @@ namespace MeasurementComputing.DAQFlex
                                     {
                                         bool addToList = true;
 
-                                        // see if the deviceInfo object is already in the list
-                                        for (int i = 0; i < existingDevices.Count; i++)
+                                        foreach (KeyValuePair<int, DeviceInfo> kvp in existingDevices)
                                         {
-                                            if (di.Pid == existingDevices[i].Pid || di.SerialNumber == existingDevices[i].SerialNumber)
+                                            int devNum = kvp.Value.DeviceNumber;
+
+                                            if (di.Pid == existingDevices[devNum].Pid && di.SerialNumber == existingDevices[devNum].SerialNumber)
                                             {
-                                                existingDevicesDetected.Add(existingDevices[i].DeviceNumber);
+                                                existingDevicesDetected.Add(existingDevices[devNum].DeviceNumber);
                                                 addToList = false;
                                                 break;
                                             }
@@ -1536,13 +1635,27 @@ namespace MeasurementComputing.DAQFlex
             // add one each from the existing devices
             foreach (KeyValuePair<int, DeviceInfo> kvp in existingDevices)
             {
-                deviceInfoList.Add(deviceNumber++, kvp.Value);
+                    // update the device number...
+                kvp.Value.DeviceNumber = deviceNumber;
+
+                    // add it to the device info list...
+                deviceInfoList.Add(deviceNumber, kvp.Value);
+
+                    // next device number...
+                deviceNumber++;
             }
 
             // add one each from the new devices
             foreach (KeyValuePair<int, DeviceInfo> kvp in newDevices)
             {
-                deviceInfoList.Add(deviceNumber++, kvp.Value);
+                    // update the device number...
+                kvp.Value.DeviceNumber = deviceNumber;
+
+                    // add it to the device info list...
+                deviceInfoList.Add(deviceNumber, kvp.Value);
+
+                    // next device number...
+                deviceNumber++;
             }
 
             return errorCode;
@@ -1570,15 +1683,22 @@ namespace MeasurementComputing.DAQFlex
 
             //System.Diagnostics.Debug.WriteLine(String.Format("Starting Control In transfer on thread {0}", Thread.CurrentThread.ManagedThreadId));
 
-            result = McUsb_ControlTransfer(m_deviceHandle,
-                                           winUsbPacket,
-                                           packet.Buffer,
-                                           //count,
-                                           packet.Length,
-                                           ref bytesTransfered,
-                                           IntPtr.Zero);
+            try
+            {
+                result = McUsb_ControlTransfer(m_deviceHandle,
+                                               winUsbPacket,
+                                               packet.Buffer,
+                    //count,
+                                               packet.Length,
+                                               ref bytesTransfered,
+                                               IntPtr.Zero);
 
-            //System.Diagnostics.Debug.WriteLine(String.Format("Completed Control In transfer on thread {0}", Thread.CurrentThread.ManagedThreadId));
+                //System.Diagnostics.Debug.WriteLine(String.Format("Completed Control In transfer on thread {0}", Thread.CurrentThread.ManagedThreadId));
+            }
+            catch (Exception)
+            {
+                return ErrorCodes.UsbIOError;
+            }
 
             packet.BytesTransfered = bytesTransfered;
 
@@ -1623,14 +1743,21 @@ namespace MeasurementComputing.DAQFlex
 
             //System.Diagnostics.Debug.WriteLine(String.Format("Starting Control Out transfer on thread {0}", Thread.CurrentThread.ManagedThreadId));
 
-            result = McUsb_ControlTransfer(m_deviceHandle,
-                                           winUsbPacket,
-                                           packet.Buffer,
-                                           (ushort)winUsbPacket.Length,
-                                           ref bytesTransfered,
-                                           IntPtr.Zero);
+            try
+            {
+                result = McUsb_ControlTransfer(m_deviceHandle,
+                                               winUsbPacket,
+                                               packet.Buffer,
+                                               (ushort)winUsbPacket.Length,
+                                               ref bytesTransfered,
+                                               IntPtr.Zero);
 
-            //System.Diagnostics.Debug.WriteLine(String.Format("Completed Control Out transfer on thread {0}", Thread.CurrentThread.ManagedThreadId));
+                //System.Diagnostics.Debug.WriteLine(String.Format("Completed Control Out transfer on thread {0}", Thread.CurrentThread.ManagedThreadId));
+            }
+            catch (Exception)
+            {
+                return ErrorCodes.UsbIOError;
+            }
 
             packet.BytesTransfered = bytesTransfered;
 

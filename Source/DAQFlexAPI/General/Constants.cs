@@ -72,6 +72,8 @@ namespace MeasurementComputing.DAQFlex
         internal const string USB_1608GX_2AO = "Usb1608GX2Ao";
         internal const string USB_201 = "Usb201";
         internal const string USB_204 = "Usb204";
+        internal const string USB_202 = "Usb202";
+        internal const string USB_205 = "Usb205";
         internal const string VIRTUAL_DEVICE = "VirtualDevice";
         internal const string USB_1208FS_PLUS = "Usb1208FSPlus";
         internal const string USB_1408FS_PLUS = "Usb1408FSPlus";
@@ -164,8 +166,8 @@ namespace MeasurementComputing.DAQFlex
         internal const string MONTH = "MONTH";
         internal const string DAY = "DAY";
         internal const string HOUR = "HOUR";
-        internal const string MIN = "MIN";
-        internal const string SEC = "SEC";
+        internal const string MINUTE = "MINUTE";
+        internal const string SECOND = "SECOND";
         internal const string TRIGREARM = "REARM";
         internal const string BLOCKSIZE = "BLOCKSIZE";
     }

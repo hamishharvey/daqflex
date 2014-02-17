@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProductVersion>9.0.21022</ProductVersion>
+    <ProductVersion>9.0.30729</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{45558BBA-D7DA-4DAD-8BFE-19360677E3AC}</ProjectGuid>
     <OutputType>Library</OutputType>
@@ -74,6 +74,7 @@
     <Compile Include="DaqDeviceClasses\ComponentClasses\Usb1608FSPlus.Ai.cs" />
     <Compile Include="DaqDeviceClasses\ComponentClasses\Usb2001Tc.Ai.cs" />
     <Compile Include="DaqDeviceClasses\ComponentClasses\Usb20x.Ai.cs" />
+    <Compile Include="DaqDeviceClasses\ComponentClasses\Usb20x.Ao.cs" />
     <Compile Include="DaqDeviceClasses\ComponentClasses\Usb2408.Ao.cs" />
     <Compile Include="DaqDeviceClasses\ComponentClasses\Usb2408x.Ai.cs" />
     <Compile Include="DaqDeviceClasses\ComponentClasses\Usb1608GX.Ao.cs" />
@@ -90,7 +91,9 @@
     <Compile Include="DaqDeviceClasses\Usb1608FSPlus.cs" />
     <Compile Include="DaqDeviceClasses\Usb2001Tc.cs" />
     <Compile Include="DaqDeviceClasses\Usb201.cs" />
+    <Compile Include="DaqDeviceClasses\Usb202.cs" />
     <Compile Include="DaqDeviceClasses\Usb204.cs" />
+    <Compile Include="DaqDeviceClasses\Usb205.cs" />
     <Compile Include="DaqDeviceClasses\Usb20x.cs" />
     <Compile Include="DaqDeviceClasses\Usb2408.cs" />
     <Compile Include="DaqDeviceClasses\Usb2408x.cs" />

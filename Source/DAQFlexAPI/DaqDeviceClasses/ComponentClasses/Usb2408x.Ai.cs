@@ -46,13 +46,32 @@ namespace MeasurementComputing.DAQFlex
         internal Usb2408xAi(DaqDevice daqDevice, DeviceInfo deviceInfo)
             : base(daqDevice, deviceInfo, 16)
         {
-            for (int i = 0; i < (m_maxChannels / 2); i++)
+                // default is scale data...
+            m_scaleData = true;
+
+                // create thermocouple types...
+            m_tcTypes = new ThermocoupleTypes[m_maxChannels / 2];
+
+            m_thermocouples = new Thermocouple[m_maxChannels / 2];
+
+                // create an array for CJC values
+            m_cjcValues = new double[m_maxChannels / 2];
+
+                // create channel types...
+            for (int i = 0; i < m_maxChannels; i++)
             {
                 m_aiChannelType[i] = GetChannelType(i);
-                m_tcType[i] = GetTcType(i);
+            }
 
-                if (m_tcType[i] != ThermocoupleTypes.NotSet)
-                    m_thermocouple = Thermocouple.CreateThermocouple(m_tcType[i]);
+                // create thermocouple objects...
+            for (int i = 0; i < (m_maxChannels / 2); i++)
+            {
+                m_tcTypes[i] = GetTcType(i);
+
+                if (m_tcTypes[i] != ThermocoupleTypes.NotSet)
+                {
+                    m_thermocouples[i] = Thermocouple.CreateThermocouple(m_tcTypes[i]);
+                }
             }
 
             // create channel mappings
@@ -377,9 +396,35 @@ namespace MeasurementComputing.DAQFlex
         //===========================================================================================
         internal override void BeginInputScan()
         {
+                // let the base do its thing...
+            base.BeginInputScan();
+
+                // reset the sample overflow flag...
+            m_daqDevice.CriticalParams.InputScanSampleOverflow = false;
+            
+                // only one channel in a multichannel scan in single io mode is transferred in each bulk transfer...
             m_daqDevice.CriticalParams.NumberOfSamplesForSingleIO = 1;
 
-            base.BeginInputScan();
+                // get the number of samples...
+            int samples = m_daqDevice.CriticalParams.InputScanSamples;
+
+                // is it greater than the device can handle...
+            if (m_daqDevice.CriticalParams.InputSampleMode == SampleMode.Finite && samples > 0x0000ffff)
+            {
+                    // need to go into continuous mode...
+                m_daqDevice.SendMessageDirect("AISCAN:SAMPLES=0");
+
+                    // set the mode to continuous...
+                m_daqDevice.CriticalParams.InputSampleMode = SampleMode.Continuous;
+
+                    // set this flag so we know were in continuous/finite mode...
+                m_daqDevice.CriticalParams.InputScanSampleOverflow = true;
+            }
+        }
+
+        internal override void  EndInputScan()
+        {
+ 	         base.EndInputScan();
         }
 
         //===========================================================================================
@@ -592,48 +637,48 @@ namespace MeasurementComputing.DAQFlex
             return ErrorCodes.NoErrors;
         }
 
-        //===============================================================================================
-        /// <summary>
-        /// Overriden to validate the per channel rate just before AISCAN:START is sent to the device
-        /// </summary>
-        /// <param name="message">The device message</param>
-        //===============================================================================================
-        internal override ErrorCodes ValidateScanRate()
-        {
-            ErrorCodes errorcode = ValidateDataRate();
-            if (errorcode != ErrorCodes.NoErrors)
-                return errorcode;
+        ////===============================================================================================
+        ///// <summary>
+        ///// Overriden to validate the per channel rate just before AISCAN:START is sent to the device
+        ///// </summary>
+        ///// <param name="message">The device message</param>
+        ////===============================================================================================
+        //internal override ErrorCodes ValidateScanRate()
+        //{
+        //    ErrorCodes errorcode = ValidateDataRate();
+        //    if (errorcode != ErrorCodes.NoErrors)
+        //        return errorcode;
 
-            double maxRate = double.MaxValue;
-            int channelCount = m_daqDevice.CriticalParams.AiChannelCount;
+        //    double maxRate = double.MaxValue;
+        //    int channelCount = m_daqDevice.CriticalParams.AiChannelCount;
 
-            try
-            {
-                double rate = m_daqDevice.CriticalParams.InputScanRate;
+        //    try
+        //    {
+        //        double rate = m_daqDevice.CriticalParams.InputScanRate;
 
-                if (m_daqDevice.CriticalParams.InputTransferMode == TransferMode.BurstIO)
-                {
-                    maxRate = m_maxBurstRate / channelCount;
+        //        if (m_daqDevice.CriticalParams.InputTransferMode == TransferMode.BurstIO)
+        //        {
+        //            maxRate = m_maxBurstRate / channelCount;
 
-                    if (rate < m_minBurstRate || rate > maxRate)
-                        return ErrorCodes.InvalidScanRateSpecified;
-                }
-                else
-                {
-                    m_maxScanThroughput = CalculateMaxScanThroughput();
-                    //maxRate = m_maxScanThroughput / channelCount;
+        //            if (rate < m_minBurstRate || rate > maxRate)
+        //                return ErrorCodes.InvalidScanRateSpecified;
+        //        }
+        //        else
+        //        {
+        //            m_maxScanThroughput = CalculateMaxScanThroughput();
+        //            //maxRate = m_maxScanThroughput / channelCount;
 
-                    if (rate < m_minScanRate || rate > m_maxScanThroughput)
-                        return ErrorCodes.InvalidScanRateSpecified;
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.Assert(false, ex.Message);
-            }
+        //            if (rate < m_minScanRate || rate > m_maxScanThroughput)
+        //                return ErrorCodes.InvalidScanRateSpecified;
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        System.Diagnostics.Debug.Assert(false, ex.Message);
+        //    }
 
-            return ErrorCodes.NoErrors;
-        }
+        //    return ErrorCodes.NoErrors;
+        //}
 
         protected double CalculateMaxScanThroughput()
         {
@@ -1251,6 +1296,11 @@ namespace MeasurementComputing.DAQFlex
         internal override ErrorCodes PostProcessData(string componentType, ref string response, ref double value)
         {
             ErrorCodes errorcode = ErrorCodes.NoErrors;
+
+            if (componentType == DaqComponents.AISCAN && response.Contains("AISCAN:RATE="))
+            {
+                return base.PostProcessData(componentType, ref response, ref value);
+            }
 
             if (componentType == DaqComponents.AI && response.Contains(DaqProperties.VALUE))
             {

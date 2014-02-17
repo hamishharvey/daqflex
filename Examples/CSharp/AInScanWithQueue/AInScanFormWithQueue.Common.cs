@@ -122,7 +122,7 @@ namespace AInScan
             // initialize the channel mode
             string channel = channelComboBox.SelectedItem.ToString();
 
-            // get the supported channel modes
+            // get the supported channel modes for this channel
             msg = "@AI{*}:CHMODES";
             msg = msg.Replace("*", channel);
 
@@ -131,10 +131,24 @@ namespace AInScan
             // if the channel modes aren't individually programmable just get the current setting
             if (response.Contains("NOT_SUPPORTED"))
             {
-                response = Device.SendMessage("?AI:CHMODE").ToString();
-                int equalIndex = response.IndexOf("=");
-                if (equalIndex >= 0)
-                    response = response.Substring(equalIndex + 1);
+                // get the supported channel modes for the entire device
+                response = Device.SendMessage("@AI:CHMODES").ToString();
+                if (response.Contains("FIXED"))
+                {
+                    // if the channel mode is fixed, use the fixed value
+                    response = response.Substring(response.IndexOf("%") + 1);
+                    int removeIndex = response.IndexOf("<");
+                    if (removeIndex >= 0)
+                        response = response.Remove(removeIndex, response.Length - removeIndex);
+                }
+                else
+                {
+                    // if the channel mode is not fixed, get the current setting
+                    response = Device.SendMessage("?AI:CHMODE").ToString();
+                    int equalIndex = response.IndexOf("=");
+                    if (equalIndex >= 0)
+                        response = response.Substring(equalIndex + 1);
+                }
             }
             else
             {

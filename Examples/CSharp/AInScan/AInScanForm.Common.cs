@@ -116,7 +116,7 @@ namespace AInScan
             try
             {
                 // Send the AI Range message for devices that support programmable ranges
-                if (rangeComboBox.Enabled)
+                if (rangeComboBox.Enabled && rangeComboBox.Items.Count > 1)
                 {
                     string rangeValue = rangeComboBox.SelectedItem.ToString();
                     string message = "AISCAN:RANGE=" + rangeValue;

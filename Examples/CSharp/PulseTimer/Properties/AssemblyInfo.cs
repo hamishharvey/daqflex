@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Measurement Computing")]
 [assembly: AssemblyProduct("PulseTimer")]
-[assembly: AssemblyCopyright("Copyright © Measurement Computing 2010")]
+[assembly: AssemblyCopyright("© Measurement Computing Corporation 2013")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 

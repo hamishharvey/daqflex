@@ -333,42 +333,42 @@ namespace MeasurementComputing.DAQFlex
             return ErrorCodes.NoErrors;
         }
 
-        //===============================================================================================
-        /// <summary>
-        /// Overriden to validate the per channel rate just before AISCAN:START is sent to the device
-        /// </summary>
-        /// <param name="message">The device message</param>
-        //===============================================================================================
-        internal override ErrorCodes ValidateScanRate()
-        {
-            try
-            {
-                int channelCount = m_daqDevice.CriticalParams.HighAiChannel - m_daqDevice.CriticalParams.LowAiChannel + 1;
-                double rate = m_daqDevice.CriticalParams.InputScanRate;
-                double maxRate;
+        ////===============================================================================================
+        ///// <summary>
+        ///// Overriden to validate the per channel rate just before AISCAN:START is sent to the device
+        ///// </summary>
+        ///// <param name="message">The device message</param>
+        ////===============================================================================================
+        //internal override ErrorCodes ValidateScanRate()
+        //{
+        //    try
+        //    {
+        //        int channelCount = m_daqDevice.CriticalParams.HighAiChannel - m_daqDevice.CriticalParams.LowAiChannel + 1;
+        //        double rate = m_daqDevice.CriticalParams.InputScanRate;
+        //        double maxRate;
 
-                if (m_daqDevice.CriticalParams.InputTransferMode == TransferMode.BurstIO)
-                {
-                    maxRate = Math.Min(m_maxBurstThroughput / channelCount, m_maxScanRate);
+        //        if (m_daqDevice.CriticalParams.InputTransferMode == TransferMode.BurstIO)
+        //        {
+        //            maxRate = Math.Min(m_maxBurstThroughput / channelCount, m_maxScanRate);
 
-                    if (rate < m_minBurstRate || rate > maxRate)
-                        return ErrorCodes.InvalidScanRateSpecified;
-                }
-                else
-                {
-                    maxRate = Math.Min(m_maxScanThroughput / channelCount, m_maxScanRate);
+        //            if (rate < m_minBurstRate || rate > maxRate)
+        //                return ErrorCodes.InvalidScanRateSpecified;
+        //        }
+        //        else
+        //        {
+        //            maxRate = Math.Min(m_maxScanThroughput / channelCount, m_maxScanRate);
 
-                    if (rate < m_minScanRate || rate > maxRate)
-                        return ErrorCodes.InvalidScanRateSpecified;
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.Assert(false, ex.Message);
-            }
+        //            if (rate < m_minScanRate || rate > maxRate)
+        //                return ErrorCodes.InvalidScanRateSpecified;
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        System.Diagnostics.Debug.Assert(false, ex.Message);
+        //    }
 
-            return ErrorCodes.NoErrors;
-        }
+        //    return ErrorCodes.NoErrors;
+        //}
 
         //=================================================================================================================
         /// <summary>

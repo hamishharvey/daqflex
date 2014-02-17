@@ -184,7 +184,7 @@ namespace MeasurementComputing.DAQFlex
                     }
                 }
 
-                //********************************************************************************
+                 //********************************************************************************
                 // Queue the device message in case the device configuration needs to be restored
                 //********************************************************************************
                 QueueDeviceMessage(msg);
@@ -266,6 +266,14 @@ namespace MeasurementComputing.DAQFlex
 
                 m_messagePending = false;
                 Monitor.Exit(m_deviceLock);
+
+                //********************************************************************************
+                // Recalculate the actual max rate when the channel count changes
+                //********************************************************************************
+                if (msg.Contains("CHAN") && msg.Contains("="))
+                {
+                    RateCalculator.CalculateMaxAiScanRate(this);
+                }
 
                 System.Diagnostics.Debug.Assert(response != null);
 
@@ -609,6 +617,10 @@ namespace MeasurementComputing.DAQFlex
                     if (Ai != null)
                         messageList = Ai.GetMessages(daqComponent);
                     break;
+                case (DaqComponents.AICAL):
+                    if (Ai != null)
+                        messageList = Ai.GetMessages(daqComponent);
+                    break;
                 case (DaqComponents.AISCAN):
                     if (Ai != null)
                         messageList = Ai.GetMessages(daqComponent);
@@ -622,6 +634,10 @@ namespace MeasurementComputing.DAQFlex
                         messageList = Ai.GetMessages(daqComponent);
                     break;
                 case (DaqComponents.AO):
+                    if (Ao != null)
+                        messageList = Ao.GetMessages(daqComponent);
+                    break;
+                case (DaqComponents.AOCAL):
                     if (Ao != null)
                         messageList = Ao.GetMessages(daqComponent);
                     break;

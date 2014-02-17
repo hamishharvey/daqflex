@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading;
+using System.Globalization;
 
 namespace MeasurementComputing.DAQFlex
 {
@@ -41,6 +42,7 @@ namespace MeasurementComputing.DAQFlex
         protected int m_SignBitMask = 0;
         protected Dictionary<int, double> m_queueDataRates = new Dictionary<int, double>();
         protected int m_savedSampleCount = 0;
+        protected int m_rateCalculatorDecrementCount;
 
         //=================================================================================================================
         /// <summary>
@@ -99,7 +101,18 @@ namespace MeasurementComputing.DAQFlex
         {
             m_calibrateData = true;
             m_aiQueueList.Clear();
+            m_rateCalculatorDecrementCount = 1;
         }
+
+        /// <summary>
+        /// The max scan rate caculated by DAQFlex
+        /// </summary>
+        internal double CalculatedMaxSampleRate { get; set; }
+
+        /// <summary>
+        /// The device's reported max scan rate
+        /// </summary>
+        internal double ActualDeviceMaxSampleRate { get; set; }
 
         //=================================================================================================================
         /// <summary>
@@ -213,10 +226,16 @@ namespace MeasurementComputing.DAQFlex
 
                 m_SignBitMask = (int)Math.Pow(2.0, (double)m_daqDevice.CriticalParams.AiDataWidth - 1);
 
+                    // if input scan is supported configure and run a scan
                 if (scanSupported)
                 {
-                    // if input scan is supported configure and run a scan
+                        // configure the scan...
                     ConfigureScan();
+
+                        // make sure we have a valid max rate...
+                    RateCalculator.CalculateMaxAiScanRate(this.m_daqDevice);
+
+                        // run the scan...
                     RunScan();
                 }
 
@@ -384,6 +403,16 @@ namespace MeasurementComputing.DAQFlex
             ResetCriticalParams();
 
             m_daqDevice.DriverInterface.ResetInputScanCount();   
+        }
+
+        //===========================================================================
+        /// <summary>
+        /// The decremenet count for the rate calculator
+        /// </summary>
+        //===========================================================================
+        internal int RateCalculatorDecrementCount
+        {
+            get { return m_rateCalculatorDecrementCount; }
         }
 
         //===========================================================================
@@ -955,6 +984,9 @@ namespace MeasurementComputing.DAQFlex
 
             if (message.Contains(DaqProperties.TEMPUNITS))
                 return ProcessTempUnitsMessage(message);
+
+            if (message.Contains(DaqProperties.SENSOR) && message.Contains(Constants.EQUAL_SIGN))
+                return ProcessSensorMessage(message);
 
             return ErrorCodes.NoErrors;
         }
@@ -2058,23 +2090,48 @@ namespace MeasurementComputing.DAQFlex
             try
             {
                 double rate;
-                PlatformParser.TryParse(MessageTranslator.GetPropertyValue(message), out rate);
 
-                //Do not validate the scan rate if the external pacer is enabled
-                if (m_daqDevice.CriticalParams.AiExtPacer == true)
+                if (PlatformParser.TryParse(MessageTranslator.GetPropertyValue(message), out rate))
                 {
-                    return ErrorCodes.NoErrors;
-                }
+                    if (rate > 0)
+                    {
+                        // get the current rate...
+                        m_daqDevice.SendMessageDirect(Messages.AISCAN_RATE_QUERY);
 
-                if (m_daqDevice.CriticalParams.InputTransferMode == TransferMode.BurstIO)
-                {
-                    if (rate > m_maxBurstThroughput || rate < m_minBurstRate)
-                        errorCode = ErrorCodes.InvalidScanRateSpecified;
-                }
-                else
-                {
-                    if (rate > m_maxScanRate || rate < m_minScanRate)
-                        errorCode = ErrorCodes.InvalidScanRateSpecified;
+                        // read the response...
+                        string response = m_daqDevice.DriverInterface.ReadStringDirect();
+
+                        double currentRate;
+
+                        if (PlatformParser.TryParse(MessageTranslator.GetPropertyValue(response), out currentRate))
+                        {
+                            if (rate == currentRate && rate == m_daqDevice.CriticalParams.InputScanRate)
+                            {
+                                // dont't set the rate again if it's the same - this addresses CAR 412235...
+                                m_daqDevice.SendMessageToDevice = false;
+
+                                // now return...
+                                return ErrorCodes.NoErrors;
+                            }
+                        }
+
+                        //Do not validate the scan rate if the external pacer is enabled
+                        if (m_daqDevice.CriticalParams.AiExtPacer == true)
+                        {
+                            return ErrorCodes.NoErrors;
+                        }
+
+                        if (m_daqDevice.CriticalParams.InputTransferMode == TransferMode.BurstIO)
+                        {
+                            if (rate > m_maxBurstThroughput || rate < m_minBurstRate)
+                                errorCode = ErrorCodes.InvalidScanRateSpecified;
+                        }
+                        else
+                        {
+                            if (rate > m_maxScanRate || rate < m_minScanRate)
+                                errorCode = ErrorCodes.InvalidScanRateSpecified;
+                        }
+                    }
                 }
             }
             catch (Exception)
@@ -2100,6 +2157,7 @@ namespace MeasurementComputing.DAQFlex
             // construct a response
             m_daqDevice.ApiResponse = new DaqResponse(APIMessages.AISCAN_MIN_SAMPLE_RATE_QUERY.Remove(0, 1) +
                                                         Constants.EQUAL_SIGN +
+                                                            //minRate.ToString(CultureInfo.CurrentCulture),
                                                             minRate.ToString(),
                                                                 minRate);
 
@@ -2120,12 +2178,13 @@ namespace MeasurementComputing.DAQFlex
         internal override ErrorCodes ProcessMaxSampleRateQuery(string message)
         {
                 // get the max rate...
-            double maxRate = RateCalculator.GetMaxAiScanRate(m_daqDevice);
+            double maxRate = RateCalculator.CalculateMaxAiScanRate(m_daqDevice);
 
                 // construct a response
             m_daqDevice.ApiResponse = new DaqResponse(APIMessages.AISCAN_MAX_SAMPLE_RATE_QUERY.Remove(0, 1) +
                                                         Constants.EQUAL_SIGN +
-                                                            maxRate.ToString(),
+                                                            //maxRate.ToString(CultureInfo.CurrentCulture),
+                                                              maxRate.ToString(),
                                                                 maxRate);
 
                 // set this flag to false so the message is not sent to the device...
@@ -2224,6 +2283,18 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="message">The device message</param>
         //====================================================================================
         internal virtual ErrorCodes ProcessTempUnitsMessage(string message)
+        {
+            return ErrorCodes.NoErrors;
+        }
+
+        //====================================================================================
+        /// <summary>
+        /// Virtual method for processing the AI SENSOR message
+        /// </summary>
+        /// <param name="message"></param>
+        /// <returns></returns>
+        //====================================================================================
+        internal virtual ErrorCodes ProcessSensorMessage(string message)
         {
             return ErrorCodes.NoErrors;
         }
@@ -2343,33 +2414,43 @@ namespace MeasurementComputing.DAQFlex
         //===============================================================================================
         internal override ErrorCodes ValidateScanRate()
         {
-            double maxRate = double.MaxValue;
-            int channelCount = m_daqDevice.CriticalParams.AiChannelCount;
+            //double maxRate = double.MaxValue;
+            //int channelCount = m_daqDevice.CriticalParams.AiChannelCount;
 
             try
             {
                 double rate = m_daqDevice.CriticalParams.InputScanRate;
 
-                //Do not validate the scan rate if the external pacer is enabled
-                if (m_daqDevice.CriticalParams.AiExtPacer == true)
+                if (ActualDeviceMaxSampleRate > 0)
                 {
-                    return ErrorCodes.NoErrors;
-                }
-
-                if (m_daqDevice.CriticalParams.InputTransferMode == TransferMode.BurstIO)
-                {
-                    maxRate = m_maxBurstRate / channelCount;
-
-                    if (rate < m_minBurstRate || rate > maxRate)
+                    if (rate > ActualDeviceMaxSampleRate)
+                    {
                         return ErrorCodes.InvalidScanRateSpecified;
+                    }
                 }
-                else
-                {
-                    maxRate = m_maxScanThroughput / channelCount;
+                //else
+                //{
+                //    //Do not validate the scan rate if the external pacer is enabled
+                //    if (m_daqDevice.CriticalParams.AiExtPacer == true)
+                //    {
+                //        return ErrorCodes.NoErrors;
+                //    }
 
-                    if (rate < m_minScanRate || rate > maxRate)
-                        return ErrorCodes.InvalidScanRateSpecified;
-                }
+                //    if (m_daqDevice.CriticalParams.InputTransferMode == TransferMode.BurstIO)
+                //    {
+                //        maxRate = m_maxBurstRate / channelCount;
+
+                //        if (rate < m_minBurstRate || rate > maxRate)
+                //            return ErrorCodes.InvalidScanRateSpecified;
+                //    }
+                //    else
+                //    {
+                //        maxRate = m_maxScanThroughput / channelCount;
+
+                //        if (rate < m_minScanRate || rate > maxRate)
+                //            return ErrorCodes.InvalidScanRateSpecified;
+                //    }
+                //}
             }
             catch (Exception ex)
             {
@@ -3015,6 +3096,35 @@ namespace MeasurementComputing.DAQFlex
                 }
             }
 
+            if (componentType == DaqComponents.AISCAN && response.Contains("AISCAN:RATE="))
+            {
+                string currentValue = MessageTranslator.GetPropertyValue(response);
+
+                double rateReturned = Double.NaN;
+
+                if (PlatformParser.TryParse(currentValue, out rateReturned))
+                {
+                    if (rateReturned > ActualDeviceMaxSampleRate)
+                    {
+                        response = response.Replace(currentValue, ActualDeviceMaxSampleRate.ToString());
+
+                            // update the critical param...
+                        m_daqDevice.CriticalParams.InputScanRate = ActualDeviceMaxSampleRate;
+
+                        string newValue = MessageTranslator.GetPropertyValue(response);
+
+                        if (!PlatformParser.TryParse(newValue, out value))
+                        {
+                            System.Diagnostics.Debug.Assert(false, String.Format("AiComponent.PostProcessData: new rate value could not be pased to double - response = {0}", response));
+                        }
+                    }
+                }
+                else
+                {
+                    System.Diagnostics.Debug.Assert(!Double.IsNaN(rateReturned), String.Format("AiComponent.PostProcessData: rate value could not be pased to double - response = {0}", response));
+                }
+            }
+
             return result;
         }
 
@@ -3199,6 +3309,11 @@ namespace MeasurementComputing.DAQFlex
                         }
                     }
                 }
+            }
+
+            if (messageType == DaqComponents.AISCAN && message.Contains(Messages.AISCAN_RATE))
+            {
+
             }
         }
     }

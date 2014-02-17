@@ -520,4 +520,10 @@
   <data name="InputBufferAllocationError" xml:space="preserve">
     <value>An error occurred while allocating the input buffer.</value>
   </data>
+  <data name="InvalidThermocoupleType" xml:space="preserve">
+    <value>An invalid thermocouple type was specified.</value>
+  </data>
+  <data name="ObjectIsNull" xml:space="preserve">
+    <value>Object is null</value>
+  </data>
 </root>

@@ -35,7 +35,7 @@ namespace MeasurementComputing.DAQFlex
 #if !WindowsCE
         protected const int INTERNAL_READ_BUFFER_SIZE = 1024000;
         protected const int INTERNAL_WRITE_BUFFER_SIZE = 65536;
-        protected const int MAX_BULK_TRANSFER_SIZE = 65536;
+        protected const int MAX_BULK_TRANSFER_SIZE = 16384;
 #else
         protected const int INTERNAL_READ_BUFFER_SIZE = 65536;
         protected const int INTERNAL_WRITE_BUFFER_SIZE = 65536;
@@ -148,6 +148,7 @@ namespace MeasurementComputing.DAQFlex
         protected Object m_deviceLock;
         protected string m_inputBlockSize;
         protected double m_inputTransferTime = 0;
+        protected EventWaitHandle m_callbackWaitHandle = new AutoResetEvent(false);
 
         internal DriverInterface(DaqDevice daqDevice, DeviceInfo deviceInfo, Object deviceLock)
         {
@@ -268,6 +269,7 @@ namespace MeasurementComputing.DAQFlex
                     deltaByteIndex = (m_internalReadBuffer.Length - m_currentInputScanReadIndex + value);
 
                 channelCount = m_criticalParams.AiChannelCount;
+
                 m_inputSamplesReadPerChannel += (ulong)(deltaByteIndex / channelCount / m_criticalParams.DataInXferSize);
 
                 m_currentInputScanReadIndex = value;
@@ -386,7 +388,7 @@ namespace MeasurementComputing.DAQFlex
             {
                 if (m_onDataAvailableCallbackControl != null && m_onDataAvailableCallbackControl.NumberOfSamples > 0)
                 {
-                    bufferSize = m_criticalParams.DataInXferSize * sizeof(double) * channelCount * m_onDataAvailableCallbackControl.NumberOfSamples;
+                    bufferSize = m_criticalParams.DataInXferSize * channelCount * m_onDataAvailableCallbackControl.NumberOfSamples;
                 }
                 else if (m_inputTransferTime > 0)
                 {
@@ -1387,7 +1389,7 @@ namespace MeasurementComputing.DAQFlex
                 // start the Process Input Scan thread
                 m_inputScanStatus = ScanState.Idle;
                 m_inputScanThread = new Thread(new ThreadStart(ProcessInputScanThread));
-                m_inputScanThread.Name = "InputScanThread";
+                m_inputScanThread.Name = "[DAQFlex]: InputScanThread";
                 m_inputScanThread.Start();
                 m_inputScanStarted = true;
 
@@ -1504,6 +1506,10 @@ namespace MeasurementComputing.DAQFlex
                 return false;
             }
 
+                // update the max scan rate...
+            RateCalculator.CalculateMaxAiScanRate(m_daqDevice);
+
+            //string appNameApplication.ProductName;
             m_errorCode = m_daqDevice.Ai.ValidateScanRate();
 
             if (m_criticalParams.InputSampleMode == SampleMode.Finite && m_errorCode == ErrorCodes.NoErrors)
@@ -1829,12 +1835,18 @@ namespace MeasurementComputing.DAQFlex
 
             m_totalBytesReceived = 0;
 
-            if (m_onDataAvailableCallbackControl != null)
+            if (m_onDataAvailableCallbackControl != null || m_onInputScanErrorCallbackControl != null || m_onInputScanCompleteCallbackControl != null)
             {
                 TerminateCallbacks = false;
-                m_onDataAvailableCallbackControl.Abort = false;
+
+                    // the other callback controls may be instantiated but this may not be...
+                if (m_onDataAvailableCallbackControl != null)
+                {
+                    m_onDataAvailableCallbackControl.Abort = false;
+                }
+                    // start the callback thread...
                 m_callbackThread = new Thread(new ThreadStart(ProcessCallbackThread));
-                m_callbackThread.Name = "OnDataAvailableCallbackThread";
+                m_callbackThread.Name = "[DAQFlex]: InputScanCallbackThread";
                 m_callbackThread.Start();
             }
 
@@ -2077,31 +2089,6 @@ namespace MeasurementComputing.DAQFlex
                 {
                     m_callbackInfoQueue.Clear();
                     TerminateCallbacks = true;
-
-                    if (m_onInputScanErrorCallbackControl != null && m_onInputScanErrorCallbackControl.Created)
-                    {
-                        if (m_inputScanErrorCode == ErrorCodes.DataOverrun)
-                            m_inputScanStatus = ScanState.Overrun;
-                        else
-                            m_inputScanStatus = ScanState.Idle;
-
-                        m_errorCode = m_inputScanErrorCode;
-                        m_invokeCallbackCount++;
-
-                        if (m_onInputScanErrorCallbackControl.ExecuteOnUIThread)
-                        {
-                            m_scanErrorCallbackParam[0] = (int)(InputScanCount - InputSamplesReadPerChannel);
-                            m_onInputScanErrorCallbackControl.BeginInvoke(m_onInputScanErrorCallback, m_scanErrorCallbackParam);
-                        }
-                        else
-                        {
-                            m_scanErrorCallbackParam[0] = (int)(InputScanCount - InputSamplesReadPerChannel);
-                            //DebugLogger.WriteLine("Raising error callback - {0} samples", m_scanErrorCallbackParam[0]);
-                            m_onInputScanErrorCallbackControl.NotifyApplication((int)m_scanErrorCallbackParam[0]);
-                            //Thread errorCallbackThread = new Thread(new ThreadStart(ProcessErrorCallbackThread));
-                            //errorCallbackThread.Start();
-                        }
-                    }
                 }
 
                 Thread.Sleep(0);
@@ -2122,78 +2109,31 @@ namespace MeasurementComputing.DAQFlex
             m_inputScanComplete = true;
             m_inputScanStarted = false;
 
-            // give the device an opportunity to do device-specific stuff before stopping
-            // THIS MUST BE DONE AFTER m_inputScanStatus HAS BEEN SET 
+                // give the device an opportunity to do device-specific stuff before stopping
+                // THIS MUST BE DONE AFTER m_inputScanStatus HAS BEEN SET 
             m_daqDevice.EndInputScan();
 
-            if (m_onDataAvailableCallbackControl != null)
+            if (m_callbackThread != null) 
             {
-                // if this is finite mode and a normal end of scan, then let the callback thread complete
-                if (m_criticalParams.InputSampleMode == SampleMode.Finite && !m_stopInputScan && m_inputScanErrorCode == ErrorCodes.NoErrors)
+                    // was a stop message sent?...
+                if (m_stopInputScan)
                 {
-                    if (m_callbackThread != null)
-                        m_callbackThread.Join();
-                }
-                else
-                {
-                    // terminate the callbacks otherwise we'll be stuck in this thread
-                    m_callbackInfoQueue.Clear();
-                    TerminateCallbacks = true;
-
-                    if (m_callbackThread != null)
-                        m_callbackThread.Join();
+                        // Does the callback thread know to terminate?...
+                    if (!TerminateCallbacks)
+                    {
+                            // Let it know...
+                        TerminateCallbacks = true;
+                    }
                 }
             }
-
-            //*****************************************************************************************
-            // OnInputScanComplete callback
-            //*****************************************************************************************
-            if (m_onInputScanCompleteCallbackControl != null && m_onInputScanCompleteCallbackControl.Created)
-            {
-                m_errorCode = m_inputScanErrorCode;
-                m_invokeCallbackCount++;
-
-                //DebugLogger.WriteLine("Invoking ScanComplete callback - {0} samples", availableSamplesForCallbackPerChannel);
-                //DebugLogger.WriteLine("   Input samples read per channel = {0}", InputSamplesReadPerChannel);
-                //DebugLogger.WriteLine("   Input scan count = {0}", InputScanCount);
-
-                if (m_onInputScanCompleteCallbackControl.ExecuteOnUIThread)
-                {
-                    int samplesPerChannelRead = m_currentInputScanReadIndex / (m_criticalParams.DataInXferSize * channelCount);
-
-                    if (m_criticalParams.InputSampleMode == SampleMode.Finite && !m_stopInputScan)
-                        m_scanCompleteCallbackParam[0] = m_totalSamplesToReadPerChannel - samplesPerChannelRead;
-                    else
-                        m_scanCompleteCallbackParam[0] = (int)(InputScanCount - InputSamplesReadPerChannel);
-
-                    m_onInputScanCompleteCallbackControl.BeginInvoke(m_onInputScanCompleteCallback, m_scanCompleteCallbackParam);
-                }
-                else
-                {
-                    int samplesPerChannelRead = m_currentInputScanReadIndex / (m_criticalParams.DataInXferSize * (int)channelCount);
-
-                    if (m_criticalParams.InputSampleMode == SampleMode.Finite && !m_stopInputScan)
-                        m_scanCompleteCallbackParam[0] = m_totalSamplesToReadPerChannel - samplesPerChannelRead;
-                    else
-                        m_scanCompleteCallbackParam[0] = (int)(InputScanCount - InputSamplesReadPerChannel);
-
-                    //DebugLogger.WriteLine("Raising scan complete callback - {0} samples", m_scanCompleteCallbackParam[0]);
-                    m_onInputScanCompleteCallbackControl.NotifyApplication((int)m_scanCompleteCallbackParam[0]);
-
-//#if !WindowsCE
-//                    Thread scanCompleteCallbackThread = new Thread(new ParameterizedThreadStart(ProcessScanCompleteCallbackThread));
-//                    scanCompleteCallbackThread.Start(channelCount);
-//#endif
-                }
-            }
-
-            //DebugLogger.DumpDebugInfo();
 
             m_errorCode = m_inputScanErrorCode;
 
-            // set the DaqDevice's pending error so that it can handle it on the next message sent
+                // set the DaqDevice's pending error so that it can handle it on the next message sent...
             if (m_errorCode != ErrorCodes.NoErrors && m_errorCode != ErrorCodes.DataOverrun)
+            {
                 m_daqDevice.SetPendingInputScanError(m_errorCode);
+            }
         }
 
         //===============================================================================================================================
@@ -2230,6 +2170,10 @@ namespace MeasurementComputing.DAQFlex
             m_onInputScanCompleteCallbackControl.NotifyApplication((int)m_scanCompleteCallbackParam[0]);
             Monitor.Exit(m_callbackLock);
         }
+        
+        protected void ReadScanData(ErrorCodes errorCode, CallbackType callbackType, object callbackData)
+        {
+        }
 
         //===============================================================================================================================
         /// <summary>
@@ -2244,9 +2188,30 @@ namespace MeasurementComputing.DAQFlex
             int availableSamplesPerChannel;
             int samplesSentToCallbackPerChannel = 0;
 
+                // apprentlly this thread assumed m_onDataAvailableCallback would always be intstantiated -
+                // so if its not we'll enable a dummy callback to intantiated it...
+            if (OnDataAvailableCallbackControl == null)
+            {
+                if (m_criticalParams.InputSampleMode == SampleMode.Finite)
+                {
+                    int callbackCount = m_criticalParams.InputScanSamples;
+
+                    if (m_criticalParams.InputScanSamples >= 100)
+                    {
+                        callbackCount /= 10;
+                    }
+
+                    m_daqDevice.EnableCallback(ReadScanData, CallbackType.OnDataAvailable, callbackCount);
+                }
+                else
+                {
+                    m_daqDevice.EnableCallback(ReadScanData, CallbackType.OnDataAvailable, 100);
+                }
+            }
+
             while (!TerminateCallbacks &&
                    ((m_criticalParams.InputSampleMode == SampleMode.Continuous) ||
-                    (m_criticalParams.InputSampleMode == SampleMode.Finite && samplesSentToCallbackPerChannel < m_criticalParams.InputScanSamples)))
+                    ((m_criticalParams.InputScanSampleOverflow || m_criticalParams.InputSampleMode == SampleMode.Finite) && samplesSentToCallbackPerChannel < m_criticalParams.InputScanSamples)))
             {
                     availableSamplesPerChannel = (int)(InputScanCount - InputSamplesReadPerChannel);
 
@@ -2284,11 +2249,7 @@ namespace MeasurementComputing.DAQFlex
                             }
                             else
                             {
-                                Monitor.Enter(m_callbackLock);
-                                //DebugLogger.WriteLine("Raising data available callback - {0} samples available ", callbackParam[0]);
                                 m_onDataAvailableCallbackControl.NotifyApplication((int)callbackParam[0]);
-                                //DebugLogger.WriteLine("Data available callback complete");
-                                Monitor.Exit(m_callbackLock);
                             }
                         }
                     }
@@ -2297,6 +2258,66 @@ namespace MeasurementComputing.DAQFlex
                     break;
 
                 Thread.Sleep(1);
+            }
+
+            //*****************************************************************************************
+            // OnInputScanError callback
+            //*****************************************************************************************
+            if (m_inputScanErrorCode != ErrorCodes.NoErrors)
+            {
+                if (m_onInputScanErrorCallbackControl != null && m_onInputScanErrorCallbackControl.Created)
+                {
+                    if (m_inputScanErrorCode == ErrorCodes.DataOverrun)
+                        m_inputScanStatus = ScanState.Overrun;
+                    else
+                        m_inputScanStatus = ScanState.Idle;
+
+                    m_errorCode = m_inputScanErrorCode;
+                    m_invokeCallbackCount++;
+
+                    if (m_onInputScanErrorCallbackControl.ExecuteOnUIThread)
+                    {
+                        m_scanErrorCallbackParam[0] = (int)(InputScanCount - InputSamplesReadPerChannel);
+                        m_onInputScanErrorCallbackControl.BeginInvoke(m_onInputScanErrorCallback, m_scanErrorCallbackParam);
+                    }
+                    else
+                    {
+                        m_scanErrorCallbackParam[0] = (int)(InputScanCount - InputSamplesReadPerChannel);
+                        m_onInputScanErrorCallbackControl.NotifyApplication((int)m_scanErrorCallbackParam[0]);
+                    }
+                }
+            }
+
+            //*****************************************************************************************
+            // OnInputScanComplete callback
+            //*****************************************************************************************
+            if (m_onInputScanCompleteCallbackControl != null && m_onInputScanCompleteCallbackControl.Created)
+            {
+                m_errorCode = m_inputScanErrorCode;
+                m_invokeCallbackCount++;
+
+                if (m_onInputScanCompleteCallbackControl.ExecuteOnUIThread)
+                {
+                    int samplesPerChannelRead = m_currentInputScanReadIndex / (m_criticalParams.DataInXferSize * channelCount);
+
+                    if (m_criticalParams.InputSampleMode == SampleMode.Finite && !m_stopInputScan)
+                        m_scanCompleteCallbackParam[0] = m_totalSamplesToReadPerChannel - samplesPerChannelRead;
+                    else
+                        m_scanCompleteCallbackParam[0] = (int)(InputScanCount - InputSamplesReadPerChannel);
+
+                    m_onInputScanCompleteCallbackControl.BeginInvoke(m_onInputScanCompleteCallback, m_scanCompleteCallbackParam);
+                }
+                else
+                {
+                    int samplesPerChannelRead = m_currentInputScanReadIndex / (m_criticalParams.DataInXferSize * (int)channelCount);
+
+                    if (m_criticalParams.InputSampleMode == SampleMode.Finite && !m_stopInputScan)
+                        m_scanCompleteCallbackParam[0] = m_totalSamplesToReadPerChannel - samplesPerChannelRead;
+                    else
+                        m_scanCompleteCallbackParam[0] = (int)(InputScanCount - InputSamplesReadPerChannel);
+
+                    m_onInputScanCompleteCallbackControl.NotifyApplication((int)m_scanCompleteCallbackParam[0]);
+                }
             }
         }
 
@@ -2385,39 +2406,26 @@ namespace MeasurementComputing.DAQFlex
             if (m_stopInputScan && errorCode == ErrorCodes.NoErrors)
             {
                 if (m_criticalParams.InputSampleMode == SampleMode.Finite && m_platformInterop.IsInputScanDataAvailable())
+                {
                     return true;
+                }
                 else
+                {
                     return false;
+                }
             }
 
             if (errorCode != ErrorCodes.NoErrors)
             {
                 if (!m_stopInputScan)
                 {
-                    UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
-                    packet.TransferType = UsbTransferTypes.ControlOut;
-                    packet.Request = ControlRequest.MESSAGE_REQUEST;
-                    packet.Index = 0;
-                    packet.Value = 0;
-                    packet.Length = (ushort)m_aiScanStopMessage.Length;
-                    Array.Copy(m_aiScanStopMessage, packet.Buffer, m_aiScanStopMessage.Length);
-
-                    // send the status message
-                    m_platformInterop.ControlTransferMutex.WaitOne();
-
-                    m_platformInterop.UsbControlOutRequest(packet);
-
-                    m_platformInterop.ControlTransferMutex.ReleaseMutex();
-
-                    m_platformInterop.StopInputTransfers();
-
-                    m_stopInputScan = true;
+                    StopInputScanDirect();
                 }
 
                 return false;
             }
 
-            if (m_criticalParams.InputSampleMode == SampleMode.Finite && 
+            if ((m_criticalParams.InputScanSampleOverflow == true || m_criticalParams.InputSampleMode == SampleMode.Finite) && 
                 m_totalBytesReceived >= 0 &&
                 m_totalBytesReceived >= (ulong)m_totalBytesToRead)
             {
@@ -2434,6 +2442,15 @@ namespace MeasurementComputing.DAQFlex
                     }
 
                     m_platformInterop.StopInputTransfers();
+                }
+
+                if (m_criticalParams.InputScanSampleOverflow == true)
+                {
+                        // terminate the OnData callback...
+                    TerminateCallbacks = true;
+
+                        // stop the scan...
+                    StopInputScanDirect();
                 }
 
                 return false;
@@ -2599,6 +2616,33 @@ namespace MeasurementComputing.DAQFlex
                 return false;
 
             return true;
+        }
+
+        //=============================================================================
+        /// <summary>
+        /// Stops an input scan directly using a control transfer
+        /// </summary>
+        //=============================================================================
+        internal void StopInputScanDirect()
+        {
+            UsbSetupPacket packet = new UsbSetupPacket(Constants.MAX_MESSAGE_LENGTH);
+            packet.TransferType = UsbTransferTypes.ControlOut;
+            packet.Request = ControlRequest.MESSAGE_REQUEST;
+            packet.Index = 0;
+            packet.Value = 0;
+            packet.Length = (ushort)m_aiScanStopMessage.Length;
+            Array.Copy(m_aiScanStopMessage, packet.Buffer, m_aiScanStopMessage.Length);
+
+            // send the status message
+            m_platformInterop.ControlTransferMutex.WaitOne();
+
+            m_platformInterop.UsbControlOutRequest(packet);
+
+            m_platformInterop.ControlTransferMutex.ReleaseMutex();
+
+            m_platformInterop.StopInputTransfers();
+
+            m_stopInputScan = true;
         }
 
         //===============================================================================

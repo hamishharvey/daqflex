@@ -153,6 +153,8 @@ namespace MeasurementComputing.DAQFlex
 
             m_errorCode = ErrorCodes.NoErrors;
 
+            m_expectedInputTransferIndex = 0;
+
             m_inputScanTriggered = false;
 
             m_totalNumberOfInputBytesTransferred = 0;
@@ -180,8 +182,8 @@ namespace MeasurementComputing.DAQFlex
                     else
                         m_totalNumberOfInputRequests = (int)Math.Ceiling((double)totalNumberOfBytes / (double)transferSize);
 
-                    if (totalNumberOfBytes % m_criticalParams.InputPacketSize == 0)
-                        m_totalNumberOfInputRequests++;
+                    //if (totalNumberOfBytes % m_criticalParams.InputPacketSize == 0)
+                    //    m_totalNumberOfInputRequests++;
                 }
             }
             else

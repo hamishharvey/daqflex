@@ -196,20 +196,20 @@ namespace MeasurementComputing.DAQFlex
                 m_daqDevice.CriticalParams.OutputScanRate = (int)m_daqDevice.SendMessage(msg).ToValue();
                 msg = Messages.AOSCAN_SAMPLES_QUERY;
                 m_daqDevice.CriticalParams.OutputScanSamples = (int)m_daqDevice.SendMessage(msg).ToValue();
-            }
 
-            msg = Messages.AOSCAN_LOWCHAN;
-            msg = Messages.InsertValue(msg, m_daqDevice.CriticalParams.LowAoChannel);
-            m_daqDevice.SendMessage(msg);
-            msg = Messages.AOSCAN_HIGHCHAN;
-            msg = Messages.InsertValue(msg, m_daqDevice.CriticalParams.HighAoChannel);
-            m_daqDevice.SendMessage(msg);
-            msg = Messages.AOSCAN_RATE;
-            msg = Messages.InsertValue(msg, m_daqDevice.CriticalParams.OutputScanRate);
-            m_daqDevice.SendMessage(msg);
-            msg = Messages.AOSCAN_SAMPLES;
-            msg = Messages.InsertValue(msg, m_daqDevice.CriticalParams.OutputScanSamples);
-            m_daqDevice.SendMessage(msg);
+                msg = Messages.AOSCAN_LOWCHAN;
+                msg = Messages.InsertValue(msg, m_daqDevice.CriticalParams.LowAoChannel);
+                m_daqDevice.SendMessage(msg);
+                msg = Messages.AOSCAN_HIGHCHAN;
+                msg = Messages.InsertValue(msg, m_daqDevice.CriticalParams.HighAoChannel);
+                m_daqDevice.SendMessage(msg);
+                msg = Messages.AOSCAN_RATE;
+                msg = Messages.InsertValue(msg, m_daqDevice.CriticalParams.OutputScanRate);
+                m_daqDevice.SendMessage(msg);
+                msg = Messages.AOSCAN_SAMPLES;
+                msg = Messages.InsertValue(msg, m_daqDevice.CriticalParams.OutputScanSamples);
+                m_daqDevice.SendMessage(msg);
+            }
 
             SetRanges();
         }

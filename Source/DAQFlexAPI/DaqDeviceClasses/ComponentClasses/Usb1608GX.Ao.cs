@@ -43,6 +43,19 @@ namespace MeasurementComputing.DAQFlex
         {
         }
 
+        internal override List<string> GetMessages(string daqComponent)
+        {
+            List<string> messages = base.GetMessages(daqComponent);
+
+            if (daqComponent == DaqComponents.AOSCAN)
+            {
+                messages.Add("?AOSCAN:RANGE");
+                messages.Add("?AOSCAN{*}:RANGE");
+            }
+
+            return messages;
+        }
+
         //=================================================================================================================
         /// <summary>
         /// Overriden to initialize range information

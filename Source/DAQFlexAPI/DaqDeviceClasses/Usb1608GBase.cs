@@ -148,12 +148,34 @@ namespace MeasurementComputing.DAQFlex
         //===================================================================
         internal override void Initialize()
         {
+            //SendMessageDirect("?DEV:FPGACFG");
+            //string response = m_driverInterface.ReadStringDirect();
+
+            //if (!response.Contains(PropertyValues.CONFIGURED))
+            //{
+            //    LoadFPGA();
+
+            //    SendMessageDirect("?DEV:FPGACFG");
+            //    response = m_driverInterface.ReadStringDirect();
+
+            //    if (!response.Contains(PropertyValues.CONFIGURED))
+            //    {
+            //        DaqException dex = ResolveException(ErrorCodes.FpgaNotLoaded);
+            //        throw dex;
+            //    }
+            //}
+
+            base.Initialize();
+        }
+
+        public override void LoadFPGA()
+        {
             SendMessageDirect("?DEV:FPGACFG");
             string response = m_driverInterface.ReadStringDirect();
 
             if (!response.Contains(PropertyValues.CONFIGURED))
             {
-                LoadFPGA();
+                LoadTheFPGA();
 
                 SendMessageDirect("?DEV:FPGACFG");
                 response = m_driverInterface.ReadStringDirect();
@@ -164,8 +186,6 @@ namespace MeasurementComputing.DAQFlex
                     throw dex;
                 }
             }
-
-            base.Initialize();
         }
 
         //================================================================================================
@@ -173,7 +193,7 @@ namespace MeasurementComputing.DAQFlex
         /// Overridden to load the device's FPGA
         /// </summary>
         //================================================================================================
-        protected override void LoadFPGA()
+        private void LoadTheFPGA()
         {
             string file = String.Empty;
 

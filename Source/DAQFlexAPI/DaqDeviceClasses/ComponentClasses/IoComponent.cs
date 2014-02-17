@@ -51,6 +51,7 @@ namespace MeasurementComputing.DAQFlex
         protected string m_valueUnits = String.Empty;
         protected string m_valueUnitsClone = String.Empty;
         protected List<string> m_defaultParamMessages = new List<string>();
+        protected bool m_adjustScanRateForChannelCount = false;
 
         //=================================================================================================================
         /// <summary>

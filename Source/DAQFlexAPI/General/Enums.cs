@@ -285,9 +285,6 @@ namespace MeasurementComputing.DAQFlex
         Usb1208FSPlus = 0xe8,
         Usb1408FSPlus = 0xe9,
         Usb1608FSPlus = 0xea,
-        Usb7110 = 0x116,
-        Usb7112 = 0x117,
-        Usb711xBOOT = 0x8116,
         Usb1208FSPlusBOOT= 0x80e8,
         Usb1408FSPlusBOOT= 0x80e9,
         Usb1608FSPlusBOOT= 0x80ea,
@@ -295,5 +292,9 @@ namespace MeasurementComputing.DAQFlex
         Usb201BOOT = 0x8113,
         Usb204 = 0x114,
         Usb204BOOT = 0x8114,
+        Usb202 = 0x12B,
+        Usb202BOOT = 0x812B,
+        Usb205 = 0x12C,
+        Usb205BOOT = 0x812C,
     }
 }

@@ -73,7 +73,7 @@ namespace AIn
         {
             try
             {
-                // Send the AI Range message
+                // Send the AI Range message for devices that support programmable ranges
                 if (rangeComboBox.Items.Count > 1)
                 {
                     string rangeValue = rangeComboBox.SelectedItem.ToString();

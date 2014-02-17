@@ -39,6 +39,8 @@ namespace MeasurementComputing.DAQFlex
             : base(daqDevice, deviceInfo, 8)
         {
             m_previousChMode = PropertyValues.DIFF;
+
+            m_adjustScanRateForChannelCount = true;
         }
 
         //=================================================================================================================
@@ -749,23 +751,86 @@ namespace MeasurementComputing.DAQFlex
             m_daqDevice.DriverInterface.CriticalParams.AiDataIsSigned = false;
         }
 
-        //===============================================================================================
+        ////===============================================================================================
+        ///// <summary>
+        ///// Overriden to validate the per channel rate just before AISCAN:START is sent to the device
+        ///// </summary>
+        ///// <param name="message">The device message</param>
+        ////===============================================================================================
+        //internal override ErrorCodes ValidateScanRate()
+        //{
+        //    if (m_daqDevice.FirmwareVersion > 2.04)
+        //        return base.ValidateScanRate();
+
+        //    double rate = m_daqDevice.CriticalParams.InputScanRate;
+
+        //    if (rate < m_minScanRate || rate > m_maxScanRate)
+        //        return ErrorCodes.InvalidScanRateSpecified;
+
+        //    return ErrorCodes.NoErrors;
+        //}
+
+        private double m_originalRate;
+
         /// <summary>
-        /// Overriden to validate the per channel rate just before AISCAN:START is sent to the device
+        /// Overriden to increase the scan rate by the number of channels...
         /// </summary>
-        /// <param name="message">The device message</param>
-        //===============================================================================================
-        internal override ErrorCodes ValidateScanRate()
+        internal override void BeginInputScan()
         {
-            if (m_daqDevice.FirmwareVersion > 2.04)
-                return base.ValidateScanRate();
+                // call into base...
+            base.BeginInputScan();
 
-            double rate = m_daqDevice.CriticalParams.InputScanRate;
+                // do we need to check if the rate needs to be adjusted...
+            if (m_adjustScanRateForChannelCount)
+            {
+                    // is ther more than 1 channel in the scan?...
+                if (m_activeChannels.Length > 1)
+                {
+                        // store the original rate...
+                    m_originalRate = m_daqDevice.CriticalParams.InputScanRate;
 
-            if (rate < m_minScanRate || rate > m_maxScanRate)
-                return ErrorCodes.InvalidScanRateSpecified;
+                        // increase the rate so that we get n samples per second per channel...
+                    m_daqDevice.CriticalParams.InputScanRate = m_activeChannels.Length * m_originalRate;
 
-            return ErrorCodes.NoErrors;
+                        // build the rate message...
+                    string msg = Messages.AISCAN_RATE;
+                    msg = msg.Replace("#", m_daqDevice.CriticalParams.InputScanRate.ToString());
+
+                        // update the rate...
+                    m_daqDevice.SendMessageDirect(msg);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Overriden to restore the rate if it was adjsted
+        /// </summary>
+        internal override void EndInputScan()
+        {
+                // call into base...
+            base.EndInputScan();
+
+                // do we need to check if the rate needs to be restored...
+            if (m_adjustScanRateForChannelCount)
+            {
+                    // is ther more than 1 channel in the scan?...
+                if (m_activeChannels.Length > 1)
+                {
+                        // check if the rate was modified...
+                    if (m_daqDevice.CriticalParams.InputScanRate != m_originalRate)
+                    {
+                            // set it back to the original rate...
+                        m_daqDevice.CriticalParams.InputScanRate = m_originalRate;
+
+                            // build the rate message...
+                        string msg = Messages.AISCAN_RATE;
+                        msg = msg.Replace("#", m_daqDevice.CriticalParams.InputScanRate.ToString());
+
+                            // restore the rate...
+                        m_daqDevice.SendMessageDirect(msg);
+                    }
+                }
+            }
         }
     }
 }

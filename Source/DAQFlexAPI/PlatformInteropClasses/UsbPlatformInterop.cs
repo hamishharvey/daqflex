@@ -30,6 +30,8 @@ namespace MeasurementComputing.DAQFlex
         protected WindowsUsbSetupPacket m_statusPacket;
         protected Queue<BulkInBuffer> m_bulkInReadyBuffers = new Queue<BulkInBuffer>();
         protected Queue<BulkInBuffer> m_bulkInCompletedBuffers = new Queue<BulkInBuffer>();
+        protected BulkInBuffer[] m_holdingBuffer;
+        protected List<BulkInBuffer> m_temporaryBuffer;
         protected object m_bulkInReadyBuffersLock = new Object();
         protected object m_bulkInCompletedBuffersLock = new Object();
         protected List<UsbBulkInRequest> m_bulkInRequests = new List<UsbBulkInRequest>();
@@ -63,6 +65,7 @@ namespace MeasurementComputing.DAQFlex
         protected int m_totalNumberOfOutputBytesRequested = 0;
         protected int m_totalNumberOfOutputBytesTransferred = 0;
         protected int m_driverInterfaceOutputBufferIndex;
+        protected int m_expectedInputTransferIndex = 0;
 	
         internal UsbPlatformInterop()
             : base()
@@ -434,9 +437,13 @@ namespace MeasurementComputing.DAQFlex
                     else
                     {
                         if (m_bulkInCompletedBuffers.Count > 0)
+                        {
                             return m_bulkInCompletedBuffers.Dequeue();
+                        }
                         else
+                        {
                             return null;
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -1005,6 +1012,7 @@ namespace MeasurementComputing.DAQFlex
     //===========================================================================
     internal class BulkInBuffer
     {
+        internal int Index;
         internal int Length;
         internal byte[] Data;
 

@@ -163,6 +163,8 @@ namespace MeasurementComputing.DAQFlex
         {
             m_errorCode = ErrorCodes.NoErrors;
 
+            m_expectedInputTransferIndex = 0;
+
             m_totalNumberOfInputBytesRequested = totalNumberOfBytes;
 
             m_completedBulkInRequestBuffers.Clear();
@@ -172,10 +174,7 @@ namespace MeasurementComputing.DAQFlex
             int maxWorkingInputRequests = (transferSize==2 ? 2 : 8);
             if (m_criticalParams.InputSampleMode == SampleMode.Finite)
             {
-               m_numberOfWorkingInputRequests = Math.Min(maxWorkingInputRequests, Math.Max(1, totalNumberOfBytes / transferSize));
-
-                //if (m_criticalParams.InputScanRate >= 10000 && m_numberOfWorkingInputRequests < 4)
-                //    m_numberOfWorkingInputRequests = 4;  
+                m_numberOfWorkingInputRequests = Math.Min(maxWorkingInputRequests, Math.Max(1, totalNumberOfBytes / transferSize));
 
                 m_numberOfQueuedInputRequests = Math.Max(1, m_numberOfWorkingInputRequests / 2);
             }
@@ -187,8 +186,12 @@ namespace MeasurementComputing.DAQFlex
 
             if (m_criticalParams.InputTransferMode == TransferMode.SingleIO)
             {
-                int aiChannelCount = m_criticalParams.AiChannelCount;
                 int byteRatio = m_criticalParams.DataInXferSize;
+
+                    // for single io mode at higher rates the packets could get out of order between the kernel driver
+                    // and user mode so only use one request buffer...
+                m_numberOfWorkingInputRequests = 1;
+                m_numberOfQueuedInputRequests = 1;
 
                 m_totalNumberOfInputRequests = totalNumberOfBytes / (byteRatio * m_criticalParams.NumberOfSamplesForSingleIO);
             }
@@ -202,14 +205,14 @@ namespace MeasurementComputing.DAQFlex
 
             // the device will send a zero-length packet after the last data packet if
             // the number of bytes is a multiple of the packet size so add an extra request (or is it the transfer size)
-            if ((totalNumberOfBytes % m_criticalParams.InputPacketSize == 0) || 
-                (m_criticalParams.InputTransferMode == TransferMode.SingleIO && m_criticalParams.Requires0LengthPacketForSingleIO))
-            {
-                m_totalNumberOfInputRequests++;
+            //if ((totalNumberOfBytes % m_criticalParams.InputPacketSize == 0) || 
+            //    (m_criticalParams.InputTransferMode == TransferMode.SingleIO && m_criticalParams.Requires0LengthPacketForSingleIO))
+            //{
+            //    m_totalNumberOfInputRequests++;
 
-                if (m_numberOfWorkingInputRequests == 1)
-                    m_numberOfWorkingInputRequests++;
-            }
+            //    if (m_numberOfWorkingInputRequests == 1)// && m_criticalParams.NumberOfSamplesForSingleIO > 1)
+            //        m_numberOfWorkingInputRequests++;
+            //}
 
             m_stopInputTransfers = false;
 
@@ -238,13 +241,25 @@ namespace MeasurementComputing.DAQFlex
                 QueueBulkInReadyBuffers(new BulkInBuffer(transferSize), QueueAction.Enqueue);
             }
 
-            // create the bulk in request objects that will be used in the transfers
+                // create the holding queue base on the number of working requests...
+            m_holdingBuffer = new BulkInBuffer[m_numberOfWorkingInputRequests];
+
+            for (int i = 0; i < m_numberOfWorkingInputRequests; i++)
+            {
+                    // initialize to null...
+                m_holdingBuffer[i] = null;
+            }
+
+            m_temporaryBuffer = new List<BulkInBuffer>();
+
+                // create the bulk in request objects that will be used in the transfers...
             CreateBulkInputRequestObjects(transferSize);
 
+                // reset the sumbitted and completed counts...
             m_numberOfInputRequestsSubmitted = 0;
             m_numberOfInputRequestsCompleted = 0;
 
-            // queue bulk in requests - at this point the device has not yet started
+                // queue bulk in requests - at this point the device has not yet started..
             QueueBulkInRequests(scanRate);
         }
 

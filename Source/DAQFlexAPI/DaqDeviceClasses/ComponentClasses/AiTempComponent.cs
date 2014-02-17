@@ -24,11 +24,11 @@ namespace MeasurementComputing.DAQFlex
 {
     class AiTempComponent : AiComponent
     {
-        protected ThermocoupleTypes[] m_tcType;
+        protected ThermocoupleTypes[] m_tcTypes;
         protected TemperatureUnits m_units;
         protected TemperatureUnits m_unitsClone;
         protected AiChannelTypes[] m_aiChannelType;
-        protected Thermocouple m_thermocouple;
+        protected Thermocouple[] m_thermocouples;
         protected Dictionary<ThermocoupleTypes, TcTempLimits> m_tcRanges = new Dictionary<ThermocoupleTypes, TcTempLimits>();
         protected bool m_otd;
 
@@ -51,8 +51,6 @@ namespace MeasurementComputing.DAQFlex
             : base(daqDevice, deviceInfo, maxChannels)
         {
             m_aiChannelType = new AiChannelTypes[m_maxChannels];
-            m_tcType = new ThermocoupleTypes[m_maxChannels];
-            m_cjcValues = new double[m_maxChannels];
         }
 
         //================================================================================================
@@ -203,7 +201,7 @@ namespace MeasurementComputing.DAQFlex
         {
             m_voltsOnly = false;
 
-            if (message.Contains(string.Format("?AI{0}:VALUE", MessageTranslator.GetChannelSpecs(channel))) && m_tcType[channel] == ThermocoupleTypes.NotSet)
+            if (message.Contains(string.Format("?AI{0}:VALUE", MessageTranslator.GetChannelSpecs(channel))) && m_tcTypes[channel] == ThermocoupleTypes.NotSet)
             {
                 return ErrorCodes.ThermocoupleTypeNotSet;
             }
@@ -226,6 +224,10 @@ namespace MeasurementComputing.DAQFlex
                 //m_calibrateData = false;
                 //m_scaleData = false;
 
+                    // read the CJC value in deg C...
+                m_daqDevice.SendMessageDirect(string.Format("?AI{0}:CJC/DEGC", MessageTranslator.GetChannelSpecs(channel)));
+                m_cjcValues[channel] = m_daqDevice.DriverInterface.ReadValueDirect();
+
                 if (message.Contains(string.Format("VALUE/RAW", MessageTranslator.GetChannelSpecs(channel))))
                 {
                     m_calibrateData = false;
@@ -245,9 +247,6 @@ namespace MeasurementComputing.DAQFlex
                     m_valueUnits = "/VOLTS";
                     message = MessageTranslator.RemoveValueResolver(message);
 
-                    m_daqDevice.SendMessageDirect(string.Format("?AI{0}:CJC/VOLTS", MessageTranslator.GetChannelSpecs(channel)));
-                    m_cjcValues[channel] = m_daqDevice.DriverInterface.ReadValueDirect();
-
                     return ErrorCodes.NoErrors;
                 }
 
@@ -259,9 +258,6 @@ namespace MeasurementComputing.DAQFlex
                     m_valueUnits = "/DEGC";
                     message = MessageTranslator.RemoveValueResolver(message);
 
-                    // get the CJC value in deg C
-                    m_daqDevice.SendMessageDirect(string.Format("?AI{0}:CJC/DEGC", MessageTranslator.GetChannelSpecs(channel)));
-                    m_cjcValues[channel] = m_daqDevice.DriverInterface.ReadValueDirect();
                     m_units = TemperatureUnits.Celsius;
 
                     return ErrorCodes.NoErrors;
@@ -276,9 +272,6 @@ namespace MeasurementComputing.DAQFlex
                     m_valueUnits = "/DEGF";
                     message = MessageTranslator.RemoveValueResolver(message);
 
-                    // get the CJC value in deg F
-                    m_daqDevice.SendMessageDirect(string.Format("?AI{0}:CJC/DEGF", MessageTranslator.GetChannelSpecs(channel)));
-                    m_cjcValues[channel] = m_daqDevice.DriverInterface.ReadValueDirect();
                     m_units = TemperatureUnits.Fahrenheit;
 
                     return ErrorCodes.NoErrors;
@@ -293,9 +286,6 @@ namespace MeasurementComputing.DAQFlex
                     m_valueUnits = "/KELVIN";
                     message = MessageTranslator.RemoveValueResolver(message);
 
-                    // get the CJC value in kelvin
-                    m_daqDevice.SendMessageDirect(string.Format("?AI{0}:CJC/KELVIN", MessageTranslator.GetChannelSpecs(channel)));
-                    m_cjcValues[channel] = m_daqDevice.DriverInterface.ReadValueDirect();
                     m_units = TemperatureUnits.Kelvin;
 
                     return ErrorCodes.NoErrors;
@@ -308,10 +298,6 @@ namespace MeasurementComputing.DAQFlex
                     // AI{0}:VALUE (no /DEGC, /DEGF, or /KELVIN).
                     m_calibrateData = true;
                     m_scaleData = true;
-
-                    // get the CJC value in kelvin
-                    m_daqDevice.SendMessageDirect(string.Format("?AI{0}:CJC/{1}", MessageTranslator.GetChannelSpecs(channel), m_valueUnits));
-                    m_cjcValues[channel] = m_daqDevice.DriverInterface.ReadValueDirect();
 
                     return ErrorCodes.NoErrors;
                 }
@@ -366,9 +352,15 @@ namespace MeasurementComputing.DAQFlex
                     m_UseTempUnits = true;
                 }
 
+                if (message.Contains("AISCAN"))
+                {
+                    m_unitsClone = m_units;
+                }
+
                 m_daqDevice.ApiResponse = new DaqResponse(MessageTranslator.ExtractResponse(message), double.NaN);
 
                 m_daqDevice.SendMessageToDevice = false;
+                
                 return ErrorCodes.NoErrors;
             }
         }
@@ -438,6 +430,67 @@ namespace MeasurementComputing.DAQFlex
             return errorCode;
         }
 
+        //===================================================================
+        /// <summary>
+        /// Overriden to create the appropriate thermocouple object
+        /// </summary>
+        /// <param name="message"></param>
+        /// <returns></returns>
+        //===================================================================
+        internal override ErrorCodes ProcessSensorMessage(string message)
+        {
+            ErrorCodes errorCode = ErrorCodes.NoErrors;
+
+            int channelIndex = MessageTranslator.GetChannel(message);
+
+            if (channelIndex >= 0)
+            {
+                if (m_thermocouples != null && m_tcTypes != null)
+                {
+                    if (channelIndex < m_thermocouples.Length && channelIndex < m_tcTypes.Length)
+                    {
+                            // get the tc type...
+                        string type = MessageTranslator.GetPropertyValue(message);
+
+                        m_tcTypes[channelIndex] = GetTcType(type.Substring(type.Length - 1));
+
+                            // create a thermocouple object base on the type...
+                        Thermocouple tc = Thermocouple.CreateThermocouple(m_tcTypes[channelIndex]);
+
+                            // is it valid...
+                        if (tc != null)
+                        {
+                            m_thermocouples[channelIndex] = tc;
+                        }
+                        else
+                        {
+                            errorCode = ErrorCodes.InvalidThermocoupleType;
+                        }
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.Assert(channelIndex < m_thermocouples.Length, String.Format("{0}: channelIndex is greater than or equal to m_thermocouples.Length", this.ToString() ));
+                        System.Diagnostics.Debug.Assert(channelIndex < m_tcTypes.Length, String.Format("{0}: channelIndex is greater than or equal to m_tcTypes.Length", this.ToString()));
+                        
+                        errorCode = ErrorCodes.InvalidIndexingForThermocouples;
+                    }
+                }
+                else
+                {
+                    System.Diagnostics.Debug.Assert(m_thermocouples != null, String.Format("{0}: m_thermocouples is null", this.ToString() ));
+                    System.Diagnostics.Debug.Assert(m_tcTypes != null, String.Format("{0}: m_tcTypes is null", this.ToString()));
+
+                    errorCode = ErrorCodes.ObjectIsNull;
+                }
+            }
+            else
+            {
+                errorCode = ErrorCodes.InvalidAiChannelSpecified;
+            }
+
+            return errorCode;
+        }
+
         //===========================================================================================
         /// <summary>
         /// Scales an analog input value
@@ -477,33 +530,32 @@ namespace MeasurementComputing.DAQFlex
             double cjcVolts;
 
             int channel = m_activeChannels[channelIndex].ChannelNumber;
-            if (m_thermocouple != null && !m_voltsOnly && m_aiChannelType[channel] == AiChannelTypes.Temperature)
+            if (m_thermocouples != null && !m_voltsOnly && m_aiChannelType[channel] == AiChannelTypes.Temperature)
             {
                 double cjcValue = m_cjcValues[channel];
                 double chVolts = 1000 * scaledValue; // in mV
                 double valueDegC = 0.0;
 
+                    // cjcValue is always in deg C...
+                cjcVolts = m_thermocouples[channelIndex].TemperatureToVoltage(cjcValue);
+
                 if (m_units == TemperatureUnits.Fahrenheit)
                 {
-                    cjcVolts = m_thermocouple.TemperatureToVoltage(m_thermocouple.FtoC(cjcValue));
-                    valueDegC = m_thermocouple.VoltageToTemperature(chVolts + cjcVolts);
-                    scaledValue = m_thermocouple.CtoF(valueDegC);
+                    valueDegC = m_thermocouples[channelIndex].VoltageToTemperature(chVolts + cjcVolts);
+                    scaledValue = m_thermocouples[channelIndex].CtoF(valueDegC);
                 }
                 else if (m_units == TemperatureUnits.Kelvin)
                 {
-                    cjcVolts = m_thermocouple.TemperatureToVoltage(m_thermocouple.KtoC(cjcValue));
-                    valueDegC = m_thermocouple.VoltageToTemperature(chVolts + cjcVolts);
-                    scaledValue = m_thermocouple.CtoK(valueDegC);
+                    valueDegC = m_thermocouples[channelIndex].VoltageToTemperature(chVolts + cjcVolts);
+                    scaledValue = m_thermocouples[channelIndex].CtoK(valueDegC);
                 }
                 else if (m_units == TemperatureUnits.Celsius)
                 {
-                    cjcVolts = m_thermocouple.TemperatureToVoltage(cjcValue);
-                    scaledValue = valueDegC = m_thermocouple.VoltageToTemperature(chVolts + cjcVolts);
+                    scaledValue = valueDegC = m_thermocouples[channelIndex].VoltageToTemperature(chVolts + cjcVolts);
                 }
                 else
                 {
-                    cjcVolts = m_thermocouple.TemperatureToVoltage(cjcValue);
-                    valueDegC = m_thermocouple.VoltageToTemperature(chVolts + cjcVolts);
+                    valueDegC = m_thermocouples[channelIndex].VoltageToTemperature(chVolts + cjcVolts);
                     scaledValue = valueDegC;
                 }
 
@@ -512,14 +564,14 @@ namespace MeasurementComputing.DAQFlex
                     // we'll only make it to here if ch mode is TC/NOOTD
                     scaledValue = Constants.OPEN_THERMOCOUPLE;
                 }
-                else if (valueDegC < m_tcRanges[m_tcType[channel]].LowerLimit)
+                else if (valueDegC < m_tcRanges[m_tcTypes[channel]].LowerLimit)
                 {
                     scaledValue = Constants.VALUE_OUT_OF_RANGE;
 
                     if (m_channelModes[channelIndex] != PropertyValues.TCNOOTD)
                         errorCode = ErrorCodes.MinTempRange;
                 }
-                else if (valueDegC > m_tcRanges[m_tcType[channel]].UpperLimit)
+                else if (valueDegC > m_tcRanges[m_tcTypes[channel]].UpperLimit)
                 {
                     scaledValue = Constants.VALUE_OUT_OF_RANGE;
 

@@ -29,7 +29,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="device">the daq device</param>
         /// <returns>max rate base on current configuration</returns>
         //==============================================================================================
-        public static double GetMaxAiScanRate(DaqDevice device)
+        public static double CalculateMaxAiScanRate(DaqDevice device)
         {
             double deviceMaxRate;
             double deviceMaxThruput;
@@ -39,30 +39,72 @@ namespace MeasurementComputing.DAQFlex
             int channelCount = 0;
             string xferMode;
             string sampleRateCalculationMethod;
+            string msg;
+            string textResponse;
+            ErrorCodes msgError;
 
-            try
+                // test if the queue component is supported by the device...
+            msgError = device.SendMessageDirect(Messages.AIQUEUE_COUNT_QUERY);
+
+            if (msgError == ErrorCodes.NoErrors)
             {
-                    // test if the queue component is supported by the device...
-                channelCount = (int)device.SendMessage(Messages.AIQUEUE_COUNT_QUERY).ToValue();
+                    // get the response...
+                textResponse = MessageTranslator.GetPropertyValue(device.DriverInterface.ReadStringDirect());
 
-                if (channelCount == 0)
+                    // convert to int...
+                if (!PlatformParser.TryParse(textResponse, out channelCount))
                 {
-                        // if queue channel count is 0 use low/high channel...
-                    int lowChannel = (int)device.SendMessage(Messages.AISCAN_LOWCHAN_QUERY).ToValue();
-                    int highChannel = (int)device.SendMessage(Messages.AISCAN_HIGHCHAN_QUERY).ToValue();
-                    channelCount = highChannel - lowChannel + 1;
+                        // alert the developer...
+                    System.Diagnostics.Debug.Assert(false, "RateCalulator.CalculateMaxAiScanRate: The channel count could not be parsed");
+
+                        // use a default value...
+                    channelCount = 1;
                 }
             }
-            catch (Exception)
+            
+            if (channelCount == 0)
             {
-                    // no queue component support...
-                int lowChannel = (int)device.SendMessage(Messages.AISCAN_LOWCHAN_QUERY).ToValue();
-                int highChannel = (int)device.SendMessage(Messages.AISCAN_HIGHCHAN_QUERY).ToValue();
+                int lowChannel;
+                int highChannel;
+
+                    // get the low channel number...
+                device.SendMessageDirect(Messages.AISCAN_LOWCHAN_QUERY);
+
+                    // get the reponse...
+                textResponse = MessageTranslator.GetPropertyValue(device.DriverInterface.ReadStringDirect());
+
+                if (!PlatformParser.TryParse(textResponse, out lowChannel))
+                {
+                        // alert the developer...
+                    System.Diagnostics.Debug.Assert(false, "RateCalulator.CalculateMaxAiScanRate: The low channel could not be parsed");
+
+                        // use a default value...
+                    lowChannel = 0;
+                }
+
+                    // get the high channel number...
+                device.SendMessageDirect(Messages.AISCAN_HIGHCHAN_QUERY);
+
+                    // get the reponse...
+                textResponse = MessageTranslator.GetPropertyValue(device.DriverInterface.ReadStringDirect());
+
+                if (!PlatformParser.TryParse(textResponse, out highChannel))
+                {
+                        // alert the developer...
+                    System.Diagnostics.Debug.Assert(false, "RateCalulator.CalculateMaxAiScanRate: The high channel could not be parsed");
+
+                        // use a default value...
+                    highChannel = 0;
+                }
+
                 channelCount = highChannel - lowChannel + 1;
             }
 
                 // get the transfer mode...
-            xferMode = device.SendMessage(Messages.AISCAN_XFRMODE_QUERY).ToString();
+            device.SendMessageDirect(Messages.AISCAN_XFRMODE_QUERY);
+
+                // get the response...
+            xferMode = MessageTranslator.GetPropertyValue(device.DriverInterface.ReadStringDirect());
 
                 // get the scan rate calculation method...
             sampleRateCalculationMethod = device.GetDevCapsString("AISCAN:SCANRATECALC", true);
@@ -80,11 +122,7 @@ namespace MeasurementComputing.DAQFlex
                                 // calculate the max rate...
                             if (channelCount > 0)
                             {
-#if !WindowsCE
-                                maxRate = Math.Truncate(deviceMaxBurstRate / channelCount);
-#else
-                                maxRate = (int)(deviceMaxBurstRate / channelCount);
-#endif
+                                maxRate = deviceMaxBurstRate / channelCount;
                             }
                             else
                             {
@@ -99,11 +137,7 @@ namespace MeasurementComputing.DAQFlex
                                 // calculate the max rate...
                             if (channelCount > 0)
                             {
-#if !WindowsCE
-                                maxRate = Math.Truncate(deviceMaxRate / channelCount);
-#else
-                                maxRate = (int)(deviceMaxRate / channelCount);
-#endif
+                                maxRate = deviceMaxRate / channelCount;
                             }
                             else
                             {
@@ -129,12 +163,6 @@ namespace MeasurementComputing.DAQFlex
                             if (channelCount > 0)
                             {
                                 maxRate = Math.Min(deviceMaxBurstThruput / channelCount, deviceMaxBurstRate);
-
-#if !WindowsCE
-                                maxRate = Math.Truncate(maxRate);
-#else
-                                maxRate = (int)maxRate;
-#endif
                             }
                             else
                             {
@@ -153,11 +181,6 @@ namespace MeasurementComputing.DAQFlex
                             if (channelCount > 0)
                             {
                                 maxRate = Math.Min(deviceMaxThruput / channelCount, deviceMaxRate);
-#if !WindowsCE
-                                maxRate = Math.Truncate(maxRate);
-#else
-                                maxRate = (int)maxRate;
-#endif
                             }
                             else
                             {
@@ -176,17 +199,31 @@ namespace MeasurementComputing.DAQFlex
 
                         for (int i = 0; i < channelCount; i++)
                         {
-                            string msg = Messages.AIQUEUE_DATARATE_QUERY;
+                            msg = Messages.AIQUEUE_DATARATE_QUERY;
                             msg = msg.Replace("*", i.ToString());
-                            dataRate = device.SendMessage(msg).ToValue();
+
+                            device.SendMessageDirect(msg);
+
+                            textResponse = MessageTranslator.GetPropertyValue(device.DriverInterface.ReadStringDirect());
+
+                            if (PlatformParser.TryParse(textResponse, out dataRate))
+                            {
+                                    // get the data rate value...
+                                dataRate = device.SendMessage(msg).ToValue();
+                            }
+                            else
+                            {
+                                    // alert the developer...
+                                System.Diagnostics.Debug.Assert(false, "RateCalulator.CalculateMaxAiScanRate: The data rate could not be parsed");
+
+                                    // use a default value...
+                                dataRate = 100;
+                            }
+
                             sum += (1.0 / dataRate) + 0.000640;
                         }
 
-#if !WindowsCE
-                        maxRate = Math.Truncate(1.0 / sum);
-#else
-                        maxRate = (int)(1.0 / sum);
-#endif
+                        maxRate = 1.0 / sum;
 
                         break;
                     }
@@ -194,10 +231,114 @@ namespace MeasurementComputing.DAQFlex
                 default:
                     {
                         System.Diagnostics.Debug.Assert(false, String.Format("{0} is not supported by GetMaxAiScanRate()", sampleRateCalculationMethod));
+
                         break;
                     }
             }
 
+                // truncate to two decimal digits...
+#if WindowsCE
+            maxRate = (double)((int)maxRate);
+#else
+            maxRate = Math.Truncate(maxRate);
+#endif
+                // save the caculated rate...
+            device.Ai.CalculatedMaxSampleRate = maxRate;
+
+                // query the rate...
+            device.SendMessageDirect(Messages.AISCAN_RATE_QUERY);
+
+                // read the current value...
+            string response = MessageTranslator.GetPropertyValue(device.DriverInterface.ReadStringDirect());
+
+                // try and convert the value...
+            double currentRate = Double.NaN;
+
+                // parse the value...
+            if (PlatformParser.TryParse(response, out currentRate))
+            {
+                    // construct the set rate message...
+                msg = Messages.AISCAN_RATE;
+
+                    // inject the max rate value...
+                msg = msg.Replace("#", maxRate.ToString());
+
+                    // set the rate...
+                device.SendMessageDirect(msg);
+
+                    // query the rate...
+                device.SendMessageDirect(Messages.AISCAN_RATE_QUERY);
+
+                    // read the value...
+                response = MessageTranslator.GetPropertyValue(device.DriverInterface.ReadStringDirect());
+
+                double actualMaxRate = Double.NaN;
+
+                if (PlatformParser.TryParse(response, out actualMaxRate))
+                {
+                    double returnedRate = actualMaxRate;
+
+                        // was the value returned rounded up?...
+                    while (returnedRate > maxRate)
+                    {
+                            // decrease it...
+                        actualMaxRate = Math.Round(actualMaxRate - device.Ai.RateCalculatorDecrementCount, 2);
+
+                        msg = Messages.AISCAN_RATE;
+                        msg = msg.Replace("#", actualMaxRate.ToString());
+
+                            // update the rate...
+                        device.SendMessageDirect(msg);
+
+                            // query the rate...
+                        device.SendMessageDirect(Messages.AISCAN_RATE_QUERY);
+
+                            // read the value...
+                        response = MessageTranslator.GetPropertyValue(device.DriverInterface.ReadStringDirect());
+
+                        if (!PlatformParser.TryParse(response, out returnedRate))
+                        {
+                                // alert developers...
+                            System.Diagnostics.Debug.Assert(!Double.IsNaN(currentRate), "RateCalculator.GetMaxAiScanRate: The max rate could not be converted to a double");
+                        }
+                    }
+
+                    
+                        // set the actual max rate...
+                    maxRate = actualMaxRate;
+
+                        // save the actual max rate...
+                    device.Ai.ActualDeviceMaxSampleRate = maxRate;
+
+                        // restore the rate...
+                    msg = Messages.AISCAN_RATE;
+
+                        // is it the device max rate?...
+                    if (currentRate == device.Ai.ActualDeviceMaxSampleRate)
+                    {
+                            // use the calculated max rate...
+                        msg = msg.Replace("#", device.Ai.CalculatedMaxSampleRate.ToString());
+                    }
+                    else
+                    {
+                            // use the current rate...
+                        msg = msg.Replace("#", currentRate.ToString());
+                    }
+
+                        // set the rate...
+                    device.SendMessageDirect(msg);
+                }
+                else
+                {
+                        // alert developers...
+                    System.Diagnostics.Debug.Assert(!Double.IsNaN(currentRate), "RateCalculator.GetMaxAiScanRate: The max rate could not be converted to a double");
+                }
+            }
+            else
+            {
+                    // alert developers...
+                System.Diagnostics.Debug.Assert(!Double.IsNaN(currentRate), "RateCalculator.GetMaxAiScanRate: The rate could not be converted to a double");
+            }
 
             return maxRate;
         }
@@ -220,6 +361,8 @@ namespace MeasurementComputing.DAQFlex
                 {
                     // test if the queue component is supported by the device...
                     channelCount = (int)device.SendMessage(Messages.AIQUEUE_COUNT_QUERY).ToValue();
+
+                    ErrorCodes e = device.SendMessageDirect("XYZ");
                 }
                 catch (Exception)
                 {

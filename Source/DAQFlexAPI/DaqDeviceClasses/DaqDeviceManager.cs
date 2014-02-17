@@ -379,6 +379,8 @@ namespace MeasurementComputing.DAQFlex
                 // load the device caps
                 device.LoadDeviceCaps(false);
 
+                device.LoadFPGA();
+
                 // check if the device is potentially in use 
                 // (this needs to have the device caps loaded)
                 ErrorCodes errorCode = device.CheckUsage();
@@ -564,7 +566,12 @@ namespace MeasurementComputing.DAQFlex
                 case (DeviceIDs.Usb204):
                     deviceName = "USB-204";
                     break;
-                    
+                case (DeviceIDs.Usb202):
+                    deviceName = "USB-202";
+                    break;
+                case (DeviceIDs.Usb205):
+                    deviceName = "USB-205";
+                    break;
                  case (DeviceIDs.Usb1208FSPlus):
                      deviceName = "USB-1208FS-Plus";
                      break;
@@ -587,6 +594,12 @@ namespace MeasurementComputing.DAQFlex
                 case (DeviceIDs.Usb204BOOT):
                     deviceName = "USB-204-BootLoader";
                     break;
+                case (DeviceIDs.Usb202BOOT):
+                    deviceName = "USB-202-BootLoader";
+                    break;
+                case (DeviceIDs.Usb205BOOT):
+                    deviceName = "USB-205-BootLoader";
+                    break;
 
                 case (DeviceIDs.Usb1408FSPlusBOOT):
                     deviceName = "USB-1408FS-Plus-BootLoader";
@@ -596,18 +609,6 @@ namespace MeasurementComputing.DAQFlex
                     deviceName = "USB-1608FS-Plus-BootLoader";
                     break;
 
-                case DeviceIDs.Usb7110:
-                    deviceName = "USB-7110";
-                    break;
-
-                case DeviceIDs.Usb7112:
-                    deviceName = "USB-7112";
-                    break;
-
-                case DeviceIDs.Usb711xBOOT:
-                    deviceName = "USB-711x-BootLoader";
-                    break;
-                    
                 default:
                     deviceName = "Unknown Device";
                     break;

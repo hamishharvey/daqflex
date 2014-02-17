@@ -16,6 +16,7 @@ namespace MeasurementComputing.DAQFlex
         internal Usb20xAi(DaqDevice daqDevice, DeviceInfo deviceInfo)
             : base(daqDevice, deviceInfo, 8)
         {
+            m_rateCalculatorDecrementCount = 20;
         }
 
         //=================================================================================================================

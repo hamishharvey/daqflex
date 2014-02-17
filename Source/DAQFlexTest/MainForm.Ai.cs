@@ -24,6 +24,10 @@ namespace MeasurementComputing.DAQFlex.Test
                 aiMessageComboBox.Enabled = true;
                 aiSendMessageButton.Enabled = true;
 
+                // get a list of supported messages for the analog output cal component
+                commands.AddRange(m_daqDevice.GetSupportedMessages("AICAL"));
+
+                // all commands are in the list, now sort them
                 commands.Sort();
 
                 foreach (string command in commands)

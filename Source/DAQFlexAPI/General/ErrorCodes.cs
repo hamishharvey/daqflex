@@ -124,6 +124,7 @@ namespace MeasurementComputing.DAQFlex
         InvalidInputBlockSize = 4243,
         NonAdjacentNonAscendingChannelsNotSupportedInQueue = 4244,
         NonAscendingChannelsNotSupportedInQueue = 4245,
+        InvalidThermocoupleType = 4246,
 
         // unsupported functions errors
         BitConfigurationNotSupported = 4300,
@@ -184,6 +185,8 @@ namespace MeasurementComputing.DAQFlex
         // internal errors
         MethodRequiresImplementation = 5000,
         ActiveChannelsNotSet = 50001,
+        ObjectIsNull = 5002,
+        InvalidIndexingForThermocouples = 5003,
     }
 
     public enum ErrorLevel

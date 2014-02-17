@@ -34,7 +34,7 @@ namespace MeasurementComputing.DAQFlex
       internal Usb1208FSPlusAi(DaqDevice daqDevice, DeviceInfo deviceInfo)
          : base(daqDevice, deviceInfo)
       {
-     
+          m_adjustScanRateForChannelCount = false;
       }
 
       //=================================================================================================================

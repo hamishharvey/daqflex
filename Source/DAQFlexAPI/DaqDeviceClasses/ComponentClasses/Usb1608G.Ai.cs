@@ -271,36 +271,36 @@ namespace MeasurementComputing.DAQFlex
             return ErrorCodes.NoErrors;
         }
 
-        //===========================================================================================
-        /// <summary>
-        /// Overriden to check for non-contiguous channels when not using the queue at start of scan
-        /// in addition to validing the rate
-        /// </summary>
-        //===========================================================================================
-        internal override ErrorCodes ValidateScanRate()
-        {
-            ErrorCodes errorCode = base.ValidateScanRate();
+        ////===========================================================================================
+        ///// <summary>
+        ///// Overriden to check for non-contiguous channels when not using the queue at start of scan
+        ///// in addition to validing the rate
+        ///// </summary>
+        ////===========================================================================================
+        //internal override ErrorCodes ValidateScanRate()
+        //{
+        //    ErrorCodes errorCode = base.ValidateScanRate();
 
-            if (errorCode == ErrorCodes.NoErrors && !m_daqDevice.CriticalParams.AiQueueEnabled)
-            {
-                int lowChannel = m_daqDevice.CriticalParams.LowAiChannel;
-                int highChannel = m_daqDevice.CriticalParams.HighAiChannel;
-                int channelCount = highChannel - lowChannel + 1;
+        //    if (errorCode == ErrorCodes.NoErrors && !m_daqDevice.CriticalParams.AiQueueEnabled)
+        //    {
+        //        int lowChannel = m_daqDevice.CriticalParams.LowAiChannel;
+        //        int highChannel = m_daqDevice.CriticalParams.HighAiChannel;
+        //        int channelCount = highChannel - lowChannel + 1;
 
-                string[] validChannels = GetValidChannels(false).Split(new char[] { PlatformInterop.LocalListSeparator });
+        //        string[] validChannels = GetValidChannels(false).Split(new char[] { PlatformInterop.LocalListSeparator });
 
-                for (int i = lowChannel; i < channelCount; i++)
-                {
-                    if (validChannels[i] != i.ToString())
-                    {
-                        errorCode = ErrorCodes.NoncontiguousChannelsSpecified;
-                        break;
-                    }
-                }
-            }
+        //        for (int i = lowChannel; i < channelCount; i++)
+        //        {
+        //            if (validChannels[i] != i.ToString())
+        //            {
+        //                errorCode = ErrorCodes.NoncontiguousChannelsSpecified;
+        //                break;
+        //            }
+        //        }
+        //    }
 
-            return errorCode;
-        }
+        //    return errorCode;
+        //}
 
         //================================================================================
         /// <summary>
@@ -322,6 +322,11 @@ namespace MeasurementComputing.DAQFlex
         //===========================================================================================
         internal override ErrorCodes PostProcessData(string componentType, ref string response, ref double value)
         {
+            if (componentType == DaqComponents.AISCAN && response.Contains("AISCAN:RATE="))
+            {
+                return base.PostProcessData(componentType, ref response, ref value);
+            }
+
             if (componentType == DaqComponents.AISCAN && response.Contains(DaqProperties.RATE))
             {
                 if (m_daqDevice.CriticalParams.AiExtPacer)

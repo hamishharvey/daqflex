@@ -84,5 +84,6 @@ namespace MeasurementComputing.DAQFlex
         internal bool Requires0LengthPacketForSingleIO { get; set; }
         internal int AdjustedRearmSamplesPerTrigger { get; set; }
         internal int NumberOfSamplesForSingleIO { get; set; }
+        internal bool InputScanSampleOverflow { get; set; }
     }
 }

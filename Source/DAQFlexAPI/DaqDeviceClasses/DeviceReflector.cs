@@ -101,6 +101,11 @@ namespace MeasurementComputing.DAQFlex
         internal const string PKTSIZE = "PKTSIZE";
         internal const string SIOTHRSHLD = "SIOTHRSHLD";
         #endregion
+
+        #region version 3.4.0.0
+        internal const string IDLESTATE = "IDLESTATE";
+        internal const string PULSECOUNT = "PULSECOUNT";
+        #endregion
     }
 
     internal class DevCapConfigurations
@@ -316,6 +321,11 @@ namespace MeasurementComputing.DAQFlex
         internal const string ASCENDING = "ASCENDING";
         internal const string ADJACENT = "ADJACENT";
         internal const string ANYORDER = "ANYORDER";
+        #endregion
+
+        #region version 3.4.0.0
+        internal const string LOW = "LOW";
+        internal const string HIGH = "HIGH";
         #endregion
     }                         
 

@@ -22,6 +22,10 @@ namespace MeasurementComputing.DAQFlex.Test
                 aoMessageComboBox.Enabled = true;
                 aoSendMessageButton.Enabled = true;
 
+                // get a list of supported messages for the analog input cal component
+                commands.AddRange(m_daqDevice.GetSupportedMessages("AOCAL"));
+
+                // all commands are in the list, now sort them
                 commands.Sort();
 
                 foreach (string command in commands)

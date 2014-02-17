@@ -22,16 +22,14 @@ using System.Reflection;
 using System.Windows.Forms;
 using System.Threading;
 using System.Globalization;
-
-namespace MeasurementComputing.DAQFlex
-{
+using Microsoft.Win32;
+namespace MeasurementComputing.DAQFlex {
     //======================================================================
     /// <summary>
     /// Base class for all daq device classes
     /// </summary>
     //======================================================================
-    public partial class DaqDevice
-    {
+    public partial class DaqDevice {
         protected const string LINUX_FPGA_DIR = "/usr/lib/daqflex";
         protected const string MAC_FPGA_DIR = "/usr/lib/";
 
@@ -78,21 +76,49 @@ namespace MeasurementComputing.DAQFlex
         /// Default ctor
         /// </summary>
         //======================================================================
-        internal DaqDevice()
-        {
+        internal DaqDevice() {
 #if !WindowsCE
             Application.ApplicationExit += new EventHandler(OnApplicationExit);
+
+            SystemEvents.PowerModeChanged += new PowerModeChangedEventHandler(SystemEvents_PowerModeChanged);
+
 #endif
         }
-        
+
+#if !WindowsCE
+        void SystemEvents_PowerModeChanged(object sender, PowerModeChangedEventArgs e) {
+            switch (e.Mode) {
+                // If the power mode is set to resume...
+                case PowerModes.Resume: {
+                        //    // terminate any enabled callbacks...
+                        //m_driverInterface.TerminateCallbacks = true;
+
+                        //    // abort any pending input transfers...
+                        //m_driverInterface.PlatformInterop.StopInputTransfers();
+
+                        //    // abort any pending output transfers...
+                        //m_driverInterface.PlatformInterop.StopOutputTransfers();
+
+                        break;
+                    }
+                default: {
+                        break;
+                    }
+            }
+        }
+#endif
+
         //======================================================================
         /// <summary>
         /// ctor - creates the driver interface object
         /// </summary>
         /// <param name="deviceInfo">A device info object</param>
         //======================================================================
-        internal DaqDevice(DeviceInfo deviceInfo, ushort devCapsOffset)
-        {
+        internal DaqDevice(DeviceInfo deviceInfo, ushort devCapsOffset) {
+#if !WindowsCE
+            SystemEvents.PowerModeChanged += new PowerModeChangedEventHandler(SystemEvents_PowerModeChanged);
+#endif
+
             m_deviceInfo = deviceInfo;
             m_deviceID = deviceInfo.Pid;
 
@@ -123,13 +149,10 @@ namespace MeasurementComputing.DAQFlex
 
             m_firmwareVersion = SendMessage(Messages.DEV_FWV).ToValue();
 
-            if (m_driverInterface.ErrorCode == ErrorCodes.NoErrors)
-            {
+            if (m_driverInterface.ErrorCode == ErrorCodes.NoErrors) {
                 // Include the data type in the first byte of data returned for 
                 SendMessageDirect(Messages.DEV_DATA_TYPE_ENABLE);
-            }
-            else
-            {
+            } else {
                 DaqException ex = ResolveException(m_driverInterface.ErrorCode);
                 throw ex;
             }
@@ -187,8 +210,7 @@ namespace MeasurementComputing.DAQFlex
         /// A reference to the DeviceInfo object
         /// </summary>
         //====================================================================
-        internal DeviceInfo DeviceInfo
-        {
+        internal DeviceInfo DeviceInfo {
             get { return m_deviceInfo; }
         }
 
@@ -197,8 +219,7 @@ namespace MeasurementComputing.DAQFlex
         /// Critical parameters for use by the driver interface
         /// </summary>
         //====================================================================
-        internal CriticalParams CriticalParams
-        {
+        internal CriticalParams CriticalParams {
             get { return m_driverInterface.CriticalParams; }
         }
 
@@ -207,8 +228,7 @@ namespace MeasurementComputing.DAQFlex
         /// Gets a reference to the device's driver interface
         /// </summary>
         //====================================================================
-        internal DriverInterface DriverInterface
-        {
+        internal DriverInterface DriverInterface {
             get { return m_driverInterface; }
         }
 
@@ -217,8 +237,7 @@ namespace MeasurementComputing.DAQFlex
         /// A reference to the device's DaqReflector object
         /// </summary>
         //====================================================================
-        internal DeviceReflector Reflector
-        {
+        internal DeviceReflector Reflector {
             get { return m_reflector; }
         }
 
@@ -227,8 +246,7 @@ namespace MeasurementComputing.DAQFlex
         /// The devices product ID
         /// </summary>
         //====================================================================
-        internal int Pid
-        {
+        internal int Pid {
             get { return m_deviceID; }
         }
 
@@ -245,8 +263,7 @@ namespace MeasurementComputing.DAQFlex
         /// The device's firmware version
         /// </summary>
         //====================================================================
-        internal double FirmwareVersion
-        {
+        internal double FirmwareVersion {
             get { return m_firmwareVersion; }
             set { m_firmwareVersion = value; }
         }
@@ -257,8 +274,7 @@ namespace MeasurementComputing.DAQFlex
         /// needs to be updated
         /// </summary>
         //====================================================================
-        internal bool UpdateRanges
-        {
+        internal bool UpdateRanges {
             get { return m_updateRanges; }
             set { m_updateRanges = value; }
         }
@@ -270,8 +286,7 @@ namespace MeasurementComputing.DAQFlex
         /// the hardware device
         /// </summary>
         //====================================================================
-        internal DaqResponse ApiResponse
-        {
+        internal DaqResponse ApiResponse {
             get { return m_apiResponse; }
             set { m_apiResponse = value; }
         }
@@ -281,8 +296,7 @@ namespace MeasurementComputing.DAQFlex
         /// Gets or set any errors associated with and API message
         /// </summary>
         //====================================================================
-        internal ErrorCodes ApiMessageError
-        {
+        internal ErrorCodes ApiMessageError {
             get { return m_apiMessageError; }
             set { m_apiMessageError = value; }
         }
@@ -295,8 +309,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="e"></param>
         //====================================================================
 #if ! WindowsCE
-        private void OnApplicationExit(object sender, EventArgs e)
-        {
+        private void OnApplicationExit(object sender, EventArgs e) {
             if (Environment.OSVersion.Platform != PlatformID.Unix)
                 ShutDownDevice();
 
@@ -310,17 +323,14 @@ namespace MeasurementComputing.DAQFlex
         /// Not the best approach - but the only one for now
         /// </summary>
         //=====================================================================
-        internal ErrorCodes CheckUsage()
-        {
-            if (!GetDevCapsString("AISCAN:MAXSCANRATE", false).Contains(PropertyValues.NOT_SUPPORTED))
-            {
-                    // get the scan status directly from the device...
+        internal ErrorCodes CheckUsage() {
+            if (!GetDevCapsString("AISCAN:MAXSCANRATE", false).Contains(PropertyValues.NOT_SUPPORTED)) {
+                // get the scan status directly from the device...
                 SendMessageDirect(Messages.AISCAN_STATUS_QUERY);
                 string status = m_driverInterface.ReadStringDirect();
 
-                    // check if an ai scan is running...
-                if (status.Contains(PropertyValues.RUNNING))
-                {
+                // check if an ai scan is running...
+                if (status.Contains(PropertyValues.RUNNING)) {
 #if !WindowsCE
                     Application.ApplicationExit -= new EventHandler(OnApplicationExit);
 #endif
@@ -328,14 +338,12 @@ namespace MeasurementComputing.DAQFlex
                 }
             }
 
-            if (!GetDevCapsString("AOSCAN:MAXSCANRATE", false).Contains(PropertyValues.NOT_SUPPORTED))
-            {
+            if (!GetDevCapsString("AOSCAN:MAXSCANRATE", false).Contains(PropertyValues.NOT_SUPPORTED)) {
                 SendMessageDirect(Messages.AOSCAN_STATUS_QUERY);
                 string status = m_driverInterface.ReadStringDirect();
 
                 // check if an ao scan is running...
-                if (status.Contains(PropertyValues.RUNNING))
-                {
+                if (status.Contains(PropertyValues.RUNNING)) {
 #if !WindowsCE
                     Application.ApplicationExit -= new EventHandler(OnApplicationExit);
 #endif
@@ -351,33 +359,25 @@ namespace MeasurementComputing.DAQFlex
         /// Virutal method to shut down a device when the application exits
         /// </summary>
         //====================================================================
-        protected virtual void ShutDownDevice()
-        {
+        protected virtual void ShutDownDevice() {
             m_continueCheckingDevice = false;
 
             //m_deviceCheckThread.Join();
 
-            if (!m_deviceReleased)
-            {
-                try
-                {
-                    if (!GetDevCapsString("AISCAN:MAXSCANRATE", false).Contains(PropertyValues.NOT_SUPPORTED))
-                    {
+            if (!m_deviceReleased) {
+                try {
+                    if (!GetDevCapsString("AISCAN:MAXSCANRATE", false).Contains(PropertyValues.NOT_SUPPORTED)) {
                         SendMessage("AISCAN:STOP");
                     }
 
-                    if (!GetDevCapsString("AOSCAN:MAXSCANRATE", false).Contains(PropertyValues.NOT_SUPPORTED))
-                    {
+                    if (!GetDevCapsString("AOSCAN:MAXSCANRATE", false).Contains(PropertyValues.NOT_SUPPORTED)) {
                         SendMessage("AOSCAN:STOP");
                     }
 
-                    if (!GetDevCapsString("CTR:CHANNELS", false).Contains(PropertyValues.NOT_SUPPORTED))
-                    {
+                    if (!GetDevCapsString("CTR:CHANNELS", false).Contains(PropertyValues.NOT_SUPPORTED)) {
                         SendMessage("CTR{0}:STOP");
                     }
-                }
-                catch (Exception)
-                {
+                } catch (Exception) {
                     // The devic may have been unplugged
                 }
             }
@@ -388,10 +388,8 @@ namespace MeasurementComputing.DAQFlex
         /// updates ranges associated with the IoComponents
         /// </summary>
         //=================================================================================================================
-        internal void UpdateIoCompRanges()
-        {
-            if (m_updateRanges)
-            {
+        internal void UpdateIoCompRanges() {
+            if (m_updateRanges) {
                 Ai.UpdateRanges();
             }
         }
@@ -403,8 +401,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="message">The message</param>
         /// <returns>The component type</returns>
         //=================================================================================================================
-        internal string GetComponentType(string message)
-        {
+        internal string GetComponentType(string message) {
             if (message.Contains("DEV:"))
                 return DaqComponents.DEV;
             else if (message.Contains("AISCAN:") || message.Contains("AISCAN{"))
@@ -441,22 +438,18 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="originalResponse">The response sent back from the device</param>
         /// <returns>The original response or a modified version of the original response</returns>
         //============================================================================================
-        protected virtual string AmendResponse(string originalResponse)
-        {
-            if (originalResponse.Contains(DaqComponents.AI) && originalResponse.Contains(DaqProperties.VALUE))
-            {
+        protected virtual string AmendResponse(string originalResponse) {
+            if (originalResponse.Contains(DaqComponents.AI) && originalResponse.Contains(DaqProperties.VALUE)) {
                 string newResponse = originalResponse.Insert(originalResponse.IndexOf("="), Ai.ValueUnits);
                 return newResponse;
             }
 
-            if (originalResponse.Contains(DaqComponents.AO) && originalResponse.Contains(DaqProperties.VALUE) && !originalResponse.Contains(Constants.QUERY.ToString()))
-            {
+            if (originalResponse.Contains(DaqComponents.AO) && originalResponse.Contains(DaqProperties.VALUE) && !originalResponse.Contains(Constants.QUERY.ToString())) {
                 string newResponse = originalResponse + Ao.ValueUnits;
                 return newResponse;
             }
 
-            if (originalResponse.Contains(DaqComponents.AO) && originalResponse.Contains(DaqProperties.VALUE) && originalResponse.Contains(Constants.QUERY.ToString()))
-            {
+            if (originalResponse.Contains(DaqComponents.AO) && originalResponse.Contains(DaqProperties.VALUE) && originalResponse.Contains(Constants.QUERY.ToString())) {
                 string newResponse = originalResponse.Insert(originalResponse.IndexOf("="), Ao.ValueUnits);
                 return newResponse;
             }
@@ -471,8 +464,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="message">The Message</param>
         /// <returns>The error code</returns>
         //====================================================================================
-        internal ErrorCodes SendMessageDirect(string message)
-        {
+        internal ErrorCodes SendMessageDirect(string message) {
             byte[] messageBytes = new byte[Constants.MAX_COMMAND_LENGTH];
 
             // convert message to an array of bytes for the driver interface
@@ -490,12 +482,10 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="message">The message to process</param>
         /// <returns>True if the message is to be sent to the device, otherwise false</returns>
         //===========================================================================================
-        internal virtual bool PreprocessMessage(ref string message, string messageType)
-        {
+        internal virtual bool PreprocessMessage(ref string message, string messageType) {
             SendMessageToDevice = true;
 
-            if (message.Contains(Constants.EQUAL_SIGN) && message.Contains(Constants.QUERY.ToString()))
-            {
+            if (message.Contains(Constants.EQUAL_SIGN) && message.Contains(Constants.QUERY.ToString())) {
                 m_apiMessageError = ErrorCodes.InvalidMessage;
                 SendMessageToDevice = false;
                 return SendMessageToDevice;
@@ -503,12 +493,10 @@ namespace MeasurementComputing.DAQFlex
 
             // first check if an Ai Cal is in progress by the cal thread id
             // Cal is running if the cal thread id is non-zero
-            if (Ai != null && Ai.CalThreadId != 0 && Thread.CurrentThread.ManagedThreadId != Ai.CalThreadId)
-            {
+            if (Ai != null && Ai.CalThreadId != 0 && Thread.CurrentThread.ManagedThreadId != Ai.CalThreadId) {
                 // if a calibration is running, then respond with device busy and
                 // don't send the message to the device
-                if (messageType != DaqComponents.AICAL && !message.Contains(DaqProperties.STATUS))
-                {
+                if (messageType != DaqComponents.AICAL && !message.Contains(DaqProperties.STATUS)) {
                     ApiResponse = new DaqResponse(PropertyValues.DEVICE_BUSY, double.NaN);
                     SendMessageToDevice = false;
                     return SendMessageToDevice;
@@ -517,29 +505,24 @@ namespace MeasurementComputing.DAQFlex
 
             // next check if an Ao Cal is in progress by the cal thread id
             // Cal is running if the cal thread id is non-zero
-            if (Ao != null && Ao.CalThreadId != 0 && Thread.CurrentThread.ManagedThreadId != Ao.CalThreadId)
-            {
+            if (Ao != null && Ao.CalThreadId != 0 && Thread.CurrentThread.ManagedThreadId != Ao.CalThreadId) {
                 // if a calibration is running, then respond with device busy and
                 // don't send the message to the device
-                if (messageType != DaqComponents.AOCAL && !message.Contains(DaqProperties.STATUS))
-                {
+                if (messageType != DaqComponents.AOCAL && !message.Contains(DaqProperties.STATUS)) {
                     ApiResponse = new DaqResponse(PropertyValues.DEVICE_BUSY, double.NaN);
                     SendMessageToDevice = false;
                     return SendMessageToDevice;
                 }
             }
 
-            if (messageType == DaqComponents.DEV)
-            {
-                if (message.Contains(APIMessages.DEVPID))
-                {
+            if (messageType == DaqComponents.DEV) {
+                if (message.Contains(APIMessages.DEVPID)) {
                     ApiResponse = new DaqResponse(APIMessages.DEVPID.Remove(0, 1) + Constants.EQUAL_SIGN + m_deviceID.ToString(), (double)m_deviceID);
                     SendMessageToDevice = false;
                     return SendMessageToDevice;
                 }
 
-                if (message.Contains(DaqCommands.LOADCAPS))
-                {
+                if (message.Contains(DaqCommands.LOADCAPS)) {
                     LoadDeviceCaps(true);
 
                     if (Ai != null)
@@ -565,14 +548,12 @@ namespace MeasurementComputing.DAQFlex
                 }
             }
 
-            if (messageType == DaqComponents.AI || 
-                    messageType == DaqComponents.AISCAN || 
+            if (messageType == DaqComponents.AI ||
+                    messageType == DaqComponents.AISCAN ||
                         messageType == DaqComponents.AITRIG ||
                             messageType == DaqComponents.AICAL ||
-                                messageType == DaqComponents.AIQUEUE)
-            {
-                if (Ai != null)
-                {
+                                messageType == DaqComponents.AIQUEUE) {
+                if (Ai != null) {
                     m_apiMessageError = Ai.PreprocessMessage(ref message, messageType);
 
                     if (m_apiMessageError == ErrorCodes.NoErrors)
@@ -582,10 +563,8 @@ namespace MeasurementComputing.DAQFlex
                 }
             }
 
-            if (messageType == DaqComponents.AO || messageType == DaqComponents.AOSCAN || messageType == DaqComponents.AOCAL)
-            {
-                if (Ao != null)
-                {
+            if (messageType == DaqComponents.AO || messageType == DaqComponents.AOSCAN || messageType == DaqComponents.AOCAL) {
+                if (Ao != null) {
                     m_apiMessageError = Ao.PreprocessMessage(ref message, messageType);
 
                     if (m_apiMessageError == ErrorCodes.NoErrors)
@@ -595,30 +574,24 @@ namespace MeasurementComputing.DAQFlex
                 }
             }
 
-            if (messageType == DaqComponents.DIO)
-            {
-                if (Dio != null)
-                {
+            if (messageType == DaqComponents.DIO) {
+                if (Dio != null) {
                     m_apiMessageError = Dio.PreprocessMessage(ref message, messageType);
 
                     return SendMessageToDevice;
                 }
             }
 
-            if (messageType == DaqComponents.CTR)
-            {
-                if (Ctr != null)
-                {
+            if (messageType == DaqComponents.CTR) {
+                if (Ctr != null) {
                     m_apiMessageError = Ctr.PreprocessMessage(ref message, messageType);
 
                     return SendMessageToDevice;
                 }
             }
 
-            if (messageType == DaqComponents.TMR)
-            {
-                if (Tmr != null)
-                {
+            if (messageType == DaqComponents.TMR) {
+                if (Tmr != null) {
                     m_apiMessageError = Tmr.PreprocessMessage(ref message, messageType);
 
                     return SendMessageToDevice;
@@ -635,8 +608,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="message">The message to process</param>
         /// <returns>True if the message is to be sent to the device, otherwise false</returns>
         //===========================================================================================
-        internal virtual void PostProcessMessage(ref string message, string messageType)
-        {
+        internal virtual void PostProcessMessage(ref string message, string messageType) {
             if (message == Messages.DEV_RESET_DEFAULT)
                 PostprocessDevReset(ref message);
 
@@ -650,12 +622,9 @@ namespace MeasurementComputing.DAQFlex
         /// </summary>
         /// <returns>An error code</returns>
         //===========================================================================================
-        internal virtual ErrorCodes PreprocessData(ref string message, string componentType)
-        {
-            if (componentType == DaqComponents.AO || componentType == DaqComponents.AOSCAN)
-            {
-                if (Ao != null)
-                {
+        internal virtual ErrorCodes PreprocessData(ref string message, string componentType) {
+            if (componentType == DaqComponents.AO || componentType == DaqComponents.AOSCAN) {
+                if (Ao != null) {
                     return Ao.PreprocessData(ref message, componentType);
                 }
             }
@@ -671,8 +640,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="message"></param>
         /// <returns></returns>
         //===========================================================================================
-        internal virtual ErrorCodes PostprocessDevReset(ref string message)
-        {
+        internal virtual ErrorCodes PostprocessDevReset(ref string message) {
             ErrorCodes errorCode = ErrorCodes.NoErrors;
 
             if (GetDevCapsString("AISCAN:MAXSCANRATE", false) != PropertyValues.NOT_SUPPORTED)
@@ -691,63 +659,47 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="dataType">The type of data (e.g. Ai, Ao, Dio)</param>
         /// <returns>An error code</returns>
         //===========================================================================================
-        internal virtual ErrorCodes PostProcessData(string componentType, ref string response, ref double value)
-        {
-            if (componentType == DaqComponents.DEV)
-            {
+        internal virtual ErrorCodes PostProcessData(string componentType, ref string response, ref double value) {
+            if (componentType == DaqComponents.DEV) {
                 ErrorCodes errorCode = ErrorCodes.NoErrors;
 
-                if (response.Contains(DaqProperties.MFGCAL) && 
-                        !response.Contains(DaqProperties.YEAR) && 
+                if (response.Contains(DaqProperties.MFGCAL) &&
+                        !response.Contains(DaqProperties.YEAR) &&
                             !response.Contains(DaqProperties.MONTH) &&
                                 !response.Contains(DaqProperties.DAY) &&
                                     !response.Contains(DaqProperties.HOUR) &&
-                                        !response.Contains(DaqProperties.MIN) &&
-                                            !response.Contains(DaqProperties.SEC))
-                {
-                    try
-                    {
+                                        !response.Contains(DaqProperties.MINUTE) &&
+                                            !response.Contains(DaqProperties.SECOND)) {
+                    try {
                         string dateTime = MessageTranslator.GetPropertyValue(response);
 
-                        if (CultureInfo.CurrentCulture.Name != DaqDeviceManager.DefaultCultureName)
-                        {
+                        if (CultureInfo.CurrentCulture.Name != DaqDeviceManager.DefaultCultureName) {
                             dateTime = DateTime.Parse(dateTime, new CultureInfo(DaqDeviceManager.DefaultCultureName)).ToString();
                             dateTime = DateTime.Parse(dateTime, CultureInfo.CurrentCulture).ToString();
 
                             response = MessageTranslator.ReplaceValue(response, dateTime);
                         }
-                    }
-                    catch (Exception)
-                    {
-                        errorCode = ErrorCodes.InvalidDateTime; 
+                    } catch (Exception) {
+                        errorCode = ErrorCodes.InvalidDateTime;
                     }
 
                     return errorCode;
                 }
             }
 
-            if (componentType == DaqComponents.AI || componentType == DaqComponents.AISCAN)
-            {
+            if (componentType == DaqComponents.AI || componentType == DaqComponents.AISCAN) {
                 if (Ai != null)
                     return Ai.PostProcessData(componentType, ref response, ref value);
-            } 
-            else if (componentType == DaqComponents.AO || componentType == DaqComponents.AOSCAN)
-            {
+            } else if (componentType == DaqComponents.AO || componentType == DaqComponents.AOSCAN) {
                 if (Ao != null)
                     return Ao.PostProcessData(componentType, ref response, ref value);
-            }
-            else if (componentType == DaqComponents.DIO)
-            {
+            } else if (componentType == DaqComponents.DIO) {
                 if (Dio != null)
                     return Dio.PostProcessData(componentType, ref response, ref value);
-            }
-            else if (componentType == DaqComponents.CTR)
-            {
+            } else if (componentType == DaqComponents.CTR) {
                 if (Ctr != null)
                     return Ctr.PostProcessData(componentType, ref response, ref value);
-            }
-            else if (componentType == DaqComponents.TMR)
-            {
+            } else if (componentType == DaqComponents.TMR) {
                 if (Tmr != null)
                     return Tmr.PostProcessData(componentType, ref response, ref value);
             }
@@ -760,8 +712,7 @@ namespace MeasurementComputing.DAQFlex
         /// Override method for invoking device-specific methods for starting an input scan
         /// </summary>
         //===========================================================================================
-        internal virtual void BeginInputScan()
-        {
+        internal virtual void BeginInputScan() {
             Ai.BeginInputScan();
         }
 
@@ -770,8 +721,7 @@ namespace MeasurementComputing.DAQFlex
         /// Override method for invoking device-specific methods for stopping an input scan
         /// </summary>
         //===========================================================================================
-        internal virtual void EndInputScan()
-        {
+        internal virtual void EndInputScan() {
             Ai.EndInputScan();
         }
 
@@ -780,8 +730,7 @@ namespace MeasurementComputing.DAQFlex
         /// Virtual method for invoking device-specific methods for starting an output scan
         /// </summary>
         //===========================================================================================
-        internal virtual void BeginOutputScan()
-        {
+        internal virtual void BeginOutputScan() {
             Ao.BeginOutputScan();
         }
 
@@ -790,8 +739,7 @@ namespace MeasurementComputing.DAQFlex
         /// Virtual method for invoking device-specific methods for stopping an input scan
         /// </summary>
         //===========================================================================================
-        internal virtual void EndOutScan()
-        {
+        internal virtual void EndOutScan() {
             Ao.EndOutScan();
         }
 
@@ -803,8 +751,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="value">The raw A/D value</param>
         /// <returns>The original value or error condition specific value</returns>
         //===========================================================================================
-        internal virtual ErrorCodes PrescaleData(int channel, ref double value)
-        {
+        internal virtual ErrorCodes PrescaleData(int channel, ref double value) {
             return ErrorCodes.NoErrors;
         }
 
@@ -816,8 +763,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="originalResponse">The response before calling the Preprocess data method</param>
         /// <returns>The response</returns>
         //===========================================================================================
-        internal virtual string GetPreprocessDataErrorResponse(ErrorCodes errorCode, string originalResponse)
-        {
+        internal virtual string GetPreprocessDataErrorResponse(ErrorCodes errorCode, string originalResponse) {
             return originalResponse;
         }
 
@@ -828,8 +774,7 @@ namespace MeasurementComputing.DAQFlex
         /// </summary>
         /// <returns>The list of messages</returns>
         //=======================================================================
-        protected virtual List<string> GetMessages()
-        {
+        protected virtual List<string> GetMessages() {
             List<string> messages = new List<string>();
 
             messages.Add("DEV:FLASHLED/*");
@@ -855,34 +800,25 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="numberOfSamples">The number of samples that will be passed to the callback method</param>
         //=========================================================================================================================================
         [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
-        public void EnableCallback(InputScanCallbackDelegate callback, CallbackType callbackType, object callbackData, bool executeOnUIThread)
-        {
+        public void EnableCallback(InputScanCallbackDelegate callback, CallbackType callbackType, object callbackData, bool executeOnUIThread) {
             Monitor.Enter(m_deviceLock);
 
-            if (callbackType == CallbackType.OnDataAvailable)
-            {
-                if (m_driverInterface.OnDataAvailableCallbackControl != null)
-                {
+            if (callbackType == CallbackType.OnDataAvailable) {
+                if (m_driverInterface.OnDataAvailableCallbackControl != null) {
                     DaqException dex = new DaqException(ErrorMessages.CallbackOperationAlreadyEnabled, ErrorCodes.CallbackOperationAlreadyEnabled);
                     throw dex;
                 }
 
                 m_driverInterface.OnDataAvailableCallbackControl = new CallbackControl(this, callback, callbackType, callbackData, executeOnUIThread);
-            }
-            else if (callbackType == CallbackType.OnInputScanComplete)
-            {
-                if (m_driverInterface.OnInputScanCompleteCallbackControl != null)
-                {
+            } else if (callbackType == CallbackType.OnInputScanComplete) {
+                if (m_driverInterface.OnInputScanCompleteCallbackControl != null) {
                     DaqException dex = new DaqException(ErrorMessages.CallbackOperationAlreadyEnabled, ErrorCodes.CallbackOperationAlreadyEnabled);
                     throw dex;
                 }
 
                 m_driverInterface.OnInputScanCompleteCallbackControl = new CallbackControl(this, callback, callbackType, callbackData, executeOnUIThread);
-            }
-            else if (callbackType == CallbackType.OnInputScanError)
-            {
-                if (m_driverInterface.OnInputScanErrorCallbackControl != null)
-                {
+            } else if (callbackType == CallbackType.OnInputScanError) {
+                if (m_driverInterface.OnInputScanErrorCallbackControl != null) {
                     DaqException dex = new DaqException(ErrorMessages.CallbackOperationAlreadyEnabled, ErrorCodes.CallbackOperationAlreadyEnabled);
                     throw dex;
                 }
@@ -893,7 +829,7 @@ namespace MeasurementComputing.DAQFlex
             Monitor.Exit(m_deviceLock);
         }
 #endif
-        
+
         //===================================================================================================
         /// <summary>
         /// Main MBD API to read scan data 
@@ -903,22 +839,19 @@ namespace MeasurementComputing.DAQFlex
         /// <returns>An array containing the data</returns>
         //===================================================================================================
         [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
-        public double[,] ReadScanData(int samplesRequested, int timeOut, out ErrorCodes errorCode)
-        {
+        public double[,] ReadScanData(int samplesRequested, int timeOut, out ErrorCodes errorCode) {
             Monitor.Enter(m_readDataLock);
 
             int samplesToRead;
 
-            if (PendingInputScanError != ErrorCodes.NoErrors && PendingInputScanError != ErrorCodes.DataOverrun)
-            {
+            if (PendingInputScanError != ErrorCodes.NoErrors && PendingInputScanError != ErrorCodes.DataOverrun) {
                 errorCode = PendingInputScanError;
                 PendingInputScanError = ErrorCodes.NoErrors;
                 Monitor.Exit(m_readDataLock);
                 return null;
             }
 
-            if (samplesRequested == 0)
-            {
+            if (samplesRequested == 0) {
                 errorCode = ErrorCodes.InputScanReadCountIsZero;
                 Monitor.Exit(m_readDataLock);
                 return null;
@@ -930,20 +863,17 @@ namespace MeasurementComputing.DAQFlex
             int byteRatio = m_driverInterface.CriticalParams.DataInXferSize;
             int bytesRequested = samplesRequested * byteRatio * channelCount;
 
-            if (bytesRequested > m_driverInterface.InputScanBuffer.Length)
-            {
+            if (bytesRequested > m_driverInterface.InputScanBuffer.Length) {
                 errorCode = ErrorCodes.RequestedReadSamplesGreaterThanBufferSize;
                 Monitor.Exit(m_readDataLock);
                 return null;
             }
 
-            if (m_driverInterface.InputScanStatus == ScanState.Idle || m_driverInterface.InputScanStatus == ScanState.Overrun)
-            {
+            if (m_driverInterface.InputScanStatus == ScanState.Idle || m_driverInterface.InputScanStatus == ScanState.Overrun) {
                 int availableSamplesPerChannel = (int)(m_driverInterface.InputScanCount - m_driverInterface.InputSamplesReadPerChannel);
                 samplesToRead = Math.Min(availableSamplesPerChannel, samplesRequested);
 
-                if (samplesToRead > 0)
-                {
+                if (samplesToRead > 0) {
                     userScanData = new double[channelCount, samplesToRead];
 
                     // get the current read index
@@ -952,10 +882,10 @@ namespace MeasurementComputing.DAQFlex
                     // get a reference to the driver interface's internal read buffer
                     byte[] internalReadBuffer = m_driverInterface.InputScanBuffer;
 
-                    if (m_driverInterface.InputScanStatus == ScanState.Overrun)
-                        DebugLogger.WriteLine("Reading {0} samples (Overrun - Thread {1})", samplesToRead, Thread.CurrentThread.ManagedThreadId);
-                    else
-                        DebugLogger.WriteLine("Reading {0} samples (Stopped - Thread {1})", samplesToRead, Thread.CurrentThread.ManagedThreadId);
+                    //if (m_driverInterface.InputScanStatus == ScanState.Overrun)
+                    //    DebugLogger.WriteLine("Reading {0} samples (Overrun - Thread {1})", samplesToRead, Thread.CurrentThread.ManagedThreadId);
+                    //else
+                    //    DebugLogger.WriteLine("Reading {0} samples (Stopped - Thread {1})", samplesToRead, Thread.CurrentThread.ManagedThreadId);
 
                     // copy the data to the inpuScanData array
                     Ai.CopyScanData(internalReadBuffer, userScanData, ref readIndex, samplesToRead);
@@ -966,7 +896,7 @@ namespace MeasurementComputing.DAQFlex
 
                 errorCode = m_driverInterface.ErrorCode;
 
-                Monitor.Exit(m_readDataLock); 
+                Monitor.Exit(m_readDataLock);
 
                 return userScanData;
             }
@@ -974,31 +904,25 @@ namespace MeasurementComputing.DAQFlex
             errorCode = m_driverInterface.ErrorCode;
 
             // first check the driver interface error code 
-            if (errorCode == ErrorCodes.NoErrors)
-            {
+            if (errorCode == ErrorCodes.NoErrors) {
                 if (!m_driverInterface.CriticalParams.TriggerRearmEnabled &&
-                        m_driverInterface.CriticalParams.InputSampleMode == SampleMode.Finite)
-                {
+                        m_driverInterface.CriticalParams.InputSampleMode == SampleMode.Finite) {
                     if (samplesRequested > m_driverInterface.CriticalParams.InputScanSamples)
                         errorCode = ErrorCodes.TooManySamplesRequested;
 
-                    if ((ulong)m_driverInterface.CriticalParams.InputScanSamples == m_driverInterface.InputSamplesReadPerChannel)
-                    {
+                    if ((ulong)m_driverInterface.CriticalParams.InputScanSamples == m_driverInterface.InputSamplesReadPerChannel) {
                         errorCode = ErrorCodes.NoMoreInputSamplesAvailable;
                     }
                 }
 
-                if (errorCode == ErrorCodes.NoErrors)
-                {
+                if (errorCode == ErrorCodes.NoErrors) {
                     // wait until there is enough fresh data to read
                     // if the device went idle then samples to read may be less than samples requested
                     samplesToRead = m_driverInterface.WaitForData(samplesRequested, timeOut);
 
                     // check the error code again in case a data overrun occurred
-                    if (m_driverInterface.ErrorCode == ErrorCodes.NoErrors)
-                    {
-                        if (samplesToRead > 0)
-                        {
+                    if (m_driverInterface.ErrorCode == ErrorCodes.NoErrors) {
+                        if (samplesToRead > 0) {
                             userScanData = new double[channelCount, samplesRequested];
 
                             // get the current read index
@@ -1007,29 +931,21 @@ namespace MeasurementComputing.DAQFlex
                             // get a reference to the driver interface's internal read buffer
                             byte[] internalReadBuffer = m_driverInterface.InputScanBuffer;
 
-                            DebugLogger.WriteLine("Reading {0} samples (Running - Thread {1})", samplesToRead, Thread.CurrentThread.ManagedThreadId);
-
                             // copy the data to the inpuScanData array
                             Ai.CopyScanData(internalReadBuffer, userScanData, ref readIndex, samplesToRead);
 
                             // update the current read index
                             m_driverInterface.CurrentInputScanReadIndex = readIndex;
-                        }
-                        else
-                        {
+                        } else {
                             errorCode = ErrorCodes.NoMoreInputSamplesAvailable;
                         }
-                    }
-                    else
-                    {
+                    } else {
                         errorCode = m_driverInterface.ErrorCode;
                     }
 
                     if (!m_driverInterface.CriticalParams.TriggerRearmEnabled &&
-                            m_driverInterface.CriticalParams.InputSampleMode == SampleMode.Finite)
-                    {
-                        if ((ulong)m_driverInterface.CriticalParams.InputScanSamples == m_driverInterface.InputScanCount)
-                        {
+                            m_driverInterface.CriticalParams.InputSampleMode == SampleMode.Finite) {
+                        if ((ulong)m_driverInterface.CriticalParams.InputScanSamples == m_driverInterface.InputScanCount) {
                             m_driverInterface.WaitForIdle();
                         }
                     }
@@ -1040,7 +956,7 @@ namespace MeasurementComputing.DAQFlex
 
             return userScanData;
         }
-        
+
 
         //==============================================================================
         /// <summary>
@@ -1049,8 +965,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="errorCode">The error that occurred</param>
         /// <returns>The Exception</returns>
         //==============================================================================
-        internal DaqException ResolveException(ErrorCodes errorCode)
-        {
+        internal DaqException ResolveException(ErrorCodes errorCode) {
             DaqException daqException;
 
             string errorMessage = GetErrorMessage(errorCode);
@@ -1075,8 +990,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="response">The last response</param>
         /// <returns>The Exception</returns>
         //==============================================================================
-        internal DaqException ResolveException(ErrorCodes errorCode, DaqResponse response)
-        {
+        internal DaqException ResolveException(ErrorCodes errorCode, DaqResponse response) {
             DaqException daqException;
 
             string errorMessage = GetErrorMessage(errorCode);
@@ -1101,8 +1015,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="errorCode">The error that occurred</param>
         /// <returns>The Exception</returns>
         //==============================================================================
-        internal DaqException ResolveException(string deviceMessage, ErrorCodes errorCode)
-        {
+        internal DaqException ResolveException(string deviceMessage, ErrorCodes errorCode) {
             DaqException daqException;
 
             string errorMessage = GetErrorMessage(errorCode);
@@ -1120,8 +1033,7 @@ namespace MeasurementComputing.DAQFlex
         /// Lets the driver free any resources associated with the device
         /// </summary>
         //======================================================================
-        internal void ReleaseDevice()
-        {
+        internal void ReleaseDevice() {
             m_continueCheckingDevice = false;
             m_driverInterface.ReleaseDevice();
             m_deviceReleased = true;
@@ -1137,8 +1049,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="countRange">the count range (e.g. 12-bit = 4096, 16-bit = 65536)</param>
         /// <returns>The convert value as an A/D count</returns>
         //===================================================================================================================
-        protected virtual int FromEngineeringUnits(double valueToConvert, double minValue, double maxValue, int countRange)
-        {
+        protected virtual int FromEngineeringUnits(double valueToConvert, double minValue, double maxValue, int countRange) {
             double deltaValue = maxValue - minValue;
 
             int convertedValue = (int)(((valueToConvert - minValue) / deltaValue) * countRange);
@@ -1151,34 +1062,34 @@ namespace MeasurementComputing.DAQFlex
         /// Loads the device's capabilities and stores them in a list
         /// </summary>
         //===============================================================================================================
-        internal virtual void LoadDeviceCaps(bool forceUpdate)
-        {
+        internal virtual void LoadDeviceCaps(bool forceUpdate) {
             m_reflector = new DeviceReflector();
 
             // read the device caps from the device's memory
             m_compressedDeviceCaps = ReadDeviceCaps();
 
-            if (m_compressedDeviceCaps != null)
-            {
-                for (int i = 0; i < m_compressedDeviceCaps.Length; i++)
-                {
-                    if (m_compressedDeviceCaps[i] != m_defaultDevCapsImage[i])
-                    {
+            if (m_compressedDeviceCaps != null) {
+                for (int i = 0; i < m_compressedDeviceCaps.Length; i++) {
+                    if (m_compressedDeviceCaps[i] != m_defaultDevCapsImage[i]) {
                         m_compressedDeviceCaps = null;
                         break;
                     }
                 }
             }
 
-            if (m_compressedDeviceCaps == null || forceUpdate)
-            {
+            if (m_compressedDeviceCaps == null || forceUpdate) {
                 // try restoring the device caps
                 ErrorCodes errorCode = RestoreDeviceCaps();
 
                 if (errorCode == ErrorCodes.NoErrors)
                     m_compressedDeviceCaps = ReadDeviceCaps();
 
-                uint lengthRead = BitConverter.ToUInt32(m_compressedDeviceCaps, m_compressedDeviceCaps.Length - sizeof(uint));
+                uint lengthRead = 0;
+
+                if (m_compressedDeviceCaps != null) {
+                    lengthRead = BitConverter.ToUInt32(m_compressedDeviceCaps, m_compressedDeviceCaps.Length - sizeof(uint));
+                }
+
                 uint expectedLength = BitConverter.ToUInt32(m_defaultDevCapsImage, m_defaultDevCapsImage.Length - sizeof(uint));
 
                 if (m_compressedDeviceCaps == null || lengthRead != expectedLength)
@@ -1188,8 +1099,7 @@ namespace MeasurementComputing.DAQFlex
                     System.Diagnostics.Debug.Assert(false, String.Format("device caps for {0} is null", this.ToString()));
             }
 
-            if (m_compressedDeviceCaps != null)
-            {
+            if (m_compressedDeviceCaps != null) {
                 m_uncompressedDeviceCaps = m_reflector.DecompressDeviceCapsImage(m_compressedDeviceCaps);
                 ConvertDeviceCaps(m_uncompressedDeviceCaps);
             }
@@ -1201,14 +1111,15 @@ namespace MeasurementComputing.DAQFlex
         /// </summary>
         /// <returns>The error code</returns>
         //==========================================================================================
-        protected virtual ErrorCodes RestoreDeviceCaps()
-        {
+        protected virtual ErrorCodes RestoreDeviceCaps() {
             ErrorCodes errorCode = ErrorCodes.NoErrors;
 
+            // CAR # 431202, don't unlock memory when writing caps for these devices
             // unlock the memory for writing
-            if (m_memLockAddr != 0x00)
-                //errorCode = m_driverInterface.UnlockDeviceMemory(m_memLockAddr, m_memUnlockCode);
+            if (m_memLockAddr != 0x00 &&
+                (m_deviceID != (int)DeviceIDs.Usb7202ID || m_deviceID != (int)DeviceIDs.Usb7204ID)) {
                 m_eepromAssistant.UnlockDeviceMemory(m_memLockAddr, m_memUnlockCode);
+            }
 
             if (errorCode != ErrorCodes.NoErrors)
                 return errorCode;
@@ -1237,8 +1148,7 @@ namespace MeasurementComputing.DAQFlex
             // increment the offset and write the wholse blocks
             memoryOffset += 2;
 
-            for (int i = 0; i < wholeBlocks; i++)
-            {
+            for (int i = 0; i < wholeBlocks; i++) {
                 errorCode = m_eepromAssistant.WriteDeviceMemory(m_memAddrCmd, m_memWriteCmd, memoryOffset, 2, bufferOffset, buffer, size);
 
                 if (errorCode != ErrorCodes.NoErrors)
@@ -1254,9 +1164,12 @@ namespace MeasurementComputing.DAQFlex
             if (errorCode != ErrorCodes.NoErrors)
                 return errorCode;
 
+            // CAR # 431202, don't unlock memory when writing CAPs
             // re-lock the memory
-            if (m_memLockAddr != 0x00)
+            if (m_memLockAddr != 0x00 &&
+                (m_deviceID != (int)DeviceIDs.Usb7202ID || m_deviceID != (int)DeviceIDs.Usb7204ID)) {
                 m_eepromAssistant.LockDeviceMemory(m_memLockAddr, m_memLockCode);
+            }
 
             return errorCode;
         }
@@ -1266,8 +1179,7 @@ namespace MeasurementComputing.DAQFlex
         /// Virtual method to initialize IO components
         /// </summary>
         //=========================================================================================
-        internal virtual void Initialize()
-        {
+        internal virtual void Initialize() {
             // reset device to its default values
             SendMessage(Messages.DEV_RESET_DEFAULT);
 
@@ -1298,8 +1210,7 @@ namespace MeasurementComputing.DAQFlex
         /// Reads the device's capabilities from the device's eeprom
         /// </summary>
         //===============================================================================================================
-        protected virtual byte[] ReadDeviceCaps()
-        {
+        protected virtual byte[] ReadDeviceCaps() {
             List<byte> bList = new List<byte>();
             byte[] buffer;
             ushort offset = m_devCapsOffset;
@@ -1311,8 +1222,7 @@ namespace MeasurementComputing.DAQFlex
             // set the byte count
             int byteCount = (int)buffer[0] + (int)(buffer[1] << 8);
 
-            if (byteCount != 0xFFFF && byteCount == m_defaultDevCapsImage.Length)
-            {
+            if (byteCount != 0xFFFF && byteCount == m_defaultDevCapsImage.Length) {
                 // calculate the number of complete blocks to read (e.g. 64 bytes)
                 int blockCount = byteCount / Constants.MAX_COMMAND_LENGTH;
 
@@ -1322,8 +1232,7 @@ namespace MeasurementComputing.DAQFlex
                 offset += 2;
 
                 // read complete blocks
-                for (int i = 0; i < blockCount; i++)
-                {
+                for (int i = 0; i < blockCount; i++) {
                     //m_driverInterface.ReadDeviceMemory1(m_memAddrCmd, m_memReadCmd, offset, m_memOffsetLength, Constants.MAX_COMMAND_LENGTH, out buffer);
                     m_eepromAssistant.ReadDeviceMemory(m_memAddrCmd, m_memReadCmd, offset, m_memOffsetLength, Constants.MAX_COMMAND_LENGTH, out buffer);
                     bList.AddRange(buffer);
@@ -1339,9 +1248,7 @@ namespace MeasurementComputing.DAQFlex
                     bList.Add(buffer[i]);
 
                 return bList.ToArray();
-            }
-            else
-            {
+            } else {
                 return null;
             }
         }
@@ -1351,7 +1258,7 @@ namespace MeasurementComputing.DAQFlex
         /// Virtual method to load a device's FPGA
         /// </summary>
         //================================================================================================
-        protected virtual void LoadFPGA()
+        public virtual void LoadFPGA() 
         {
         }
 
@@ -1362,14 +1269,12 @@ namespace MeasurementComputing.DAQFlex
         /// </summary>
         /// <param name="compressedImage">The compressed device caps image</param>
         //================================================================================================
-        protected void ConvertDeviceCaps(byte[] uncompressedImage)
-        {
+        protected void ConvertDeviceCaps(byte[] uncompressedImage) {
             Dictionary<string, string> enDeviceCaps = new Dictionary<string, string>();
 
             string image = m_ae.GetString(uncompressedImage, 0, uncompressedImage.Length);
 
-            if (CheckCRC(image))
-            {
+            if (CheckCRC(image)) {
                 string[] deviceCapsList = image.Split(new char[] { '%' });
 
                 int index = 0;
@@ -1384,21 +1289,18 @@ namespace MeasurementComputing.DAQFlex
 
                 string[] deviceCapsParts;
 
-                try
-                {
+                try {
                     string deviceCaps;
-                    
+
                     // convert codes to text
-                    for (int i = index; i < (deviceCapsList.Length - 1); i++)
-                    {
+                    for (int i = index; i < (deviceCapsList.Length - 1); i++) {
                         deviceCaps = deviceCapsList[i];
 
                         // the deviceCapsParts are...
                         // Component:DevCapsName:Config:Channels:Implementation:Type:DevCapsValue:DependentFeatures
                         deviceCapsParts = deviceCaps.Split(new char[] { ':' });
 
-                        if (deviceCaps != String.Empty)
-                        {
+                        if (deviceCaps != String.Empty) {
                             string devCapsKey;
                             string devCapsValue = String.Empty;
 
@@ -1422,17 +1324,14 @@ namespace MeasurementComputing.DAQFlex
                             // get the configuration this feature pertains to
                             string configuration;
 
-                            if (deviceCapsParts[2] == "*")
-                            {
+                            if (deviceCapsParts[2] == "*") {
                                 configuration = "ALL";
-                            }
-                            else
-                            {
+                            } else {
                                 configuration = m_reflector.GetConfiguration(Int32.Parse(deviceCapsParts[2]));
 
                                 if (configuration == String.Empty)
                                     continue;
-                                
+
                                 devCapsKey += ("/" + configuration);
                             }
 
@@ -1459,14 +1358,12 @@ namespace MeasurementComputing.DAQFlex
                             // get the feature value
                             string[] valueParts;
 
-                            if (valueType == "TXT")
-                            {
+                            if (valueType == "TXT") {
                                 valueParts = deviceCapsParts[6].Split(new char[] { ',' });
 
                                 string value = String.Empty;
 
-                                for (int j = 0; j < valueParts.Length; j++)
-                                {
+                                for (int j = 0; j < valueParts.Length; j++) {
                                     value = m_reflector.GetValue(Int32.Parse(valueParts[j]));
 
                                     if (value == String.Empty)
@@ -1480,22 +1377,18 @@ namespace MeasurementComputing.DAQFlex
 
                                 if (value == String.Empty)
                                     continue;
-                            }
-                            else
-                            {
+                            } else {
                                 devCapsValue += deviceCapsParts[6];
                             }
 
                             // get the dependent features
-                            if (deviceCapsParts.Length == 8)
-                            {
+                            if (deviceCapsParts.Length == 8) {
                                 devCapsValue += "<";
 
                                 // value parts are always read in as ',' regardless of culture setting
                                 string[] dependentParts = deviceCapsParts[7].Split(new char[] { ',' });
 
-                                for (int j = 0; j < dependentParts.Length; j++)
-                                {
+                                for (int j = 0; j < dependentParts.Length; j++) {
                                     devCapsValue += m_reflector.GetDevCapName(Int32.Parse(dependentParts[j]));
 
                                     if (j < (dependentParts.Length - 1))
@@ -1505,8 +1398,7 @@ namespace MeasurementComputing.DAQFlex
                                 devCapsValue += ">";
                             }
 
-                            if (channels != "*" && channels != "X")
-                            {
+                            if (channels != "*" && channels != "X") {
                                 int lowChannel;
                                 int highChannel;
 
@@ -1521,8 +1413,7 @@ namespace MeasurementComputing.DAQFlex
 
                                 string chCaps;
 
-                                for (int j = lowChannel; j <= highChannel; j++)
-                                {
+                                for (int j = lowChannel; j <= highChannel; j++) {
                                     chCaps = component + "{" + j.ToString() + "}:" + devCapsName;
 
                                     if (configuration != "ALL")
@@ -1530,15 +1421,11 @@ namespace MeasurementComputing.DAQFlex
 
                                     enDeviceCaps.Add(chCaps, devCapsValue);
                                 }
-                            }
-                            else
-                            {
+                            } else {
                                 enDeviceCaps.Add(devCapsKey, devCapsValue);
 
-                                if (channels == "*")
-                                {
-                                    switch (component)
-                                    {
+                                if (channels == "*") {
+                                    switch (component) {
                                         case (DaqComponents.AI):
                                         case (DaqComponents.AISCAN):
                                             if (Ai != null)
@@ -1580,17 +1467,14 @@ namespace MeasurementComputing.DAQFlex
                     }
 
                     // convert any ',' to the current culture list separator
-                    
+
                     string ccls = CultureInfo.CurrentCulture.TextInfo.ListSeparator;
 
-                    foreach (KeyValuePair<string, string> kvp in enDeviceCaps)
-                    {
+                    foreach (KeyValuePair<string, string> kvp in enDeviceCaps) {
                         string localizedCaps = kvp.Value.Replace(Constants.VALUE_SEPARATOR, ccls);
                         m_deviceCaps.Add(kvp.Key, localizedCaps);
                     }
-                }
-                catch (Exception ex)
-                {
+                } catch (Exception ex) {
                     System.Diagnostics.Debug.Assert(false, ex.Message);
                 }
             }
@@ -1603,17 +1487,14 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="message">The message</param>
         /// <returns>The message response</returns>
         //=====================================================================================================================
-        internal virtual DaqResponse GetDeviceCapability(string message)
-        {
+        internal virtual DaqResponse GetDeviceCapability(string message) {
             string capsKey = message.Substring(1);
             string capsValue = GetDevCapsString(capsKey, false);
 
             string textResponse;
 
-            try
-            {
-                if (capsValue != PropertyValues.NOT_SUPPORTED)
-                {
+            try {
+                if (capsValue != PropertyValues.NOT_SUPPORTED) {
                     int implementationStartIndex = 0;
                     int implementationEndIndex = capsValue.IndexOf(Constants.PERCENT);
 
@@ -1639,16 +1520,24 @@ namespace MeasurementComputing.DAQFlex
                     if (PlatformParser.TryParse(value, out parsedValue))
                         responseValue = parsedValue;
 
+                    if (message.Contains(DevCapNames.SIOTHRSHLD)) {
+                        // is it multiplexed?...
+                        if (GetDevCapsString("AISCAN:SIMUL", false).Contains(PropertyValues.NOT_SUPPORTED)) {
+                            if (m_driverInterface.CriticalParams.AiChannelCount > 0) {
+                                // for mulitplexed devices divide by the channel count...
+                                responseValue /= m_driverInterface.CriticalParams.AiChannelCount;
+
+                                textResponse = textResponse.Replace(value, responseValue.ToString());
+                            }
+                        }
+                    }
+
                     return new DaqResponse(textResponse, responseValue);
-                }
-                else
-                {
+                } else {
                     textResponse = capsKey + Constants.EQUAL_SIGN + PropertyValues.NOT_SUPPORTED;
                     return new DaqResponse(textResponse, Double.NaN);
                 }
-            }
-            catch (Exception)
-            {
+            } catch (Exception) {
                 textResponse = capsKey + Constants.EQUAL_SIGN + PropertyValues.NOT_SUPPORTED;
                 return new DaqResponse(textResponse, Double.NaN);
             }
@@ -1663,8 +1552,7 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="trim">A flag indicating if the response should be trimmed after the percent symbol</param>
         /// <returns>The device caps value</returns>
         //==================================================================================================================
-        internal virtual double GetDevCapsValue(string capsKey)
-        {
+        internal virtual double GetDevCapsValue(string capsKey) {
             double value = Double.NaN;
 
             string response = GetDevCapsString(capsKey, true);
@@ -1685,48 +1573,38 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="trim">A flag indicating if the response should be trimmed after the percent symbol</param>
         /// <returns>The device caps value</returns>
         //==================================================================================================================
-        internal virtual string GetDevCapsString(string capsKey, bool trim)
-        {
+        internal virtual string GetDevCapsString(string capsKey, bool trim) {
             int channel = MessageTranslator.GetChannel(capsKey);
 
-            if (capsKey.Contains(DaqComponents.AI) && 
+            if (capsKey.Contains(DaqComponents.AI) &&
                     (capsKey.Contains(DevCapNames.RANGES) || capsKey.Contains(DevCapNames.INPUTS) ||
-                        capsKey.Contains(DevCapNames.SENSORS) || capsKey.Contains(DevCapNames.TCTYPES)))
-            {
+                        capsKey.Contains(DevCapNames.SENSORS) || capsKey.Contains(DevCapNames.TCTYPES))) {
                 string config;
                 string response = String.Empty;
                 string msg;
 
-                if (channel >= 0)
-                {
-                    if (!capsKey.Contains(Constants.VALUE_RESOLVER.ToString()))
-                    {
-                        try
-                        {
+                if (channel >= 0) {
+                    if (!capsKey.Contains(Constants.VALUE_RESOLVER.ToString())) {
+                        try {
                             msg = "@AI{*}:CHMODES";
                             msg = Messages.InsertChannel(msg, channel);
                             response = SendMessage(msg).ToString();
-                        }
-                        catch (Exception ex)
-                        {
+                        } catch (Exception ex) {
                             System.Diagnostics.Debug.Assert(false, ex.Message);
                             response = "NOT_SUPPORTED";
                         }
 
-                        if (response.Contains("NOT_SUPPORTED"))
-                        {
+                        if (response.Contains("NOT_SUPPORTED")) {
                             msg = "@AI:CHMODES";
                             response = SendMessage(msg).ToString();
                         }
 
-                        if (response.Contains("PROG"))
-                        {
+                        if (response.Contains("PROG")) {
                             msg = Messages.AI_CHMODE_QUERY;
                             SendMessageDirect(msg);
                             response = m_driverInterface.ReadStringDirect();
 
-                            if (response.Contains(PropertyValues.MIXED))
-                            {
+                            if (response.Contains(PropertyValues.MIXED)) {
                                 msg = Messages.AI_CH_CHMODE_QUERY;
                                 msg = msg.Replace("*", channel.ToString());
                                 SendMessageDirect(msg);
@@ -1736,8 +1614,7 @@ namespace MeasurementComputing.DAQFlex
                             config = MessageTranslator.GetPropertyValue(response);
                             capsKey = capsKey + Constants.VALUE_RESOLVER + config;
 
-                            if (config != PropertyValues.DIFF && config != PropertyValues.SE && config != PropertyValues.TCOTD && config != PropertyValues.TCNOOTD)
-                            {
+                            if (config != PropertyValues.DIFF && config != PropertyValues.SE && config != PropertyValues.TCOTD && config != PropertyValues.TCNOOTD) {
                                 msg = Messages.AI_CH_CHMODE_QUERY;
                                 msg = Messages.InsertChannel(msg, channel);
                                 SendMessageDirect(msg);
@@ -1745,9 +1622,7 @@ namespace MeasurementComputing.DAQFlex
                                 config = MessageTranslator.GetPropertyValue(response);
                                 capsKey = capsKey + Constants.VALUE_RESOLVER + config;
                             }
-                        }
-                        else
-                        {
+                        } else {
                             config = response.Substring(response.IndexOf("%") + 1);
 
                             if (config.Contains(Constants.LESS_THAN_SYMBOL.ToString()))
@@ -1756,14 +1631,11 @@ namespace MeasurementComputing.DAQFlex
                             capsKey = capsKey + Constants.VALUE_RESOLVER + config;
                         }
                     }
-                }
-                else
-                {
+                } else {
                     msg = "@AI:CHMODES";
                     response = SendMessage(msg).ToString();
 
-                    if (response.Contains("PROG"))
-                    {
+                    if (response.Contains("PROG")) {
                         msg = Messages.AI_CHMODE_QUERY;
                         SendMessageDirect(msg);
                         response = m_driverInterface.ReadStringDirect();
@@ -1777,8 +1649,7 @@ namespace MeasurementComputing.DAQFlex
                         if (!capsKey.Contains(Constants.VALUE_RESOLVER.ToString()) && !capsKey.Contains(config))
                             capsKey = capsKey + Constants.VALUE_RESOLVER + config;
 
-                        if (config != PropertyValues.DIFF && config != PropertyValues.SE && config != PropertyValues.TCOTD && config != PropertyValues.TCNOOTD)
-                        {
+                        if (config != PropertyValues.DIFF && config != PropertyValues.SE && config != PropertyValues.TCOTD && config != PropertyValues.TCNOOTD) {
                             msg = Messages.AI_CH_CHMODE_QUERY;
                             msg = Messages.InsertChannel(msg, channel);
                             SendMessageDirect(msg);
@@ -1786,11 +1657,9 @@ namespace MeasurementComputing.DAQFlex
                             config = MessageTranslator.GetPropertyValue(response);
                             capsKey = capsKey + Constants.VALUE_RESOLVER + config;
                         }
-                    }
-                    else
-                    {
+                    } else {
                         config = response.Substring(response.IndexOf("%") + 1);
-                        
+
                         /* remove the dependent properties e.g. <CHANNELS> */
                         if (config.Contains(Constants.LESS_THAN_SYMBOL.ToString()))
                             config = config.Remove(config.IndexOf(Constants.LESS_THAN_SYMBOL), config.Length - config.IndexOf(Constants.LESS_THAN_SYMBOL));
@@ -1801,29 +1670,22 @@ namespace MeasurementComputing.DAQFlex
                     }
                 }
             }
-            
+
             string capsValue;
 
             bool result = m_deviceCaps.TryGetValue(capsKey, out capsValue);
 
-            if (result == true)
-            {
-                try
-                {
-                    if (trim)
-                    {
+            if (result == true) {
+                try {
+                    if (trim) {
                         capsValue = capsValue.Substring(capsValue.IndexOf(Constants.PERCENT) + 1);
                     }
-                }
-                catch (Exception)
-                {
+                } catch (Exception) {
                     System.Diagnostics.Debug.Assert(false, "Exception in GetDevCapsValue");
                 }
 
                 return MessageTranslator.ConvertToCurrentCulture(capsValue);
-            }
-            else
-            {
+            } else {
                 return PropertyValues.NOT_SUPPORTED;
             }
         }
@@ -1835,10 +1697,8 @@ namespace MeasurementComputing.DAQFlex
         /// <param name="uncompressedImage">The uncompressed device reflection image that's was read from the device</param>
         /// <returns>True if the CRC check passes otherwise false</returns>
         //==================================================================================================================
-        protected bool CheckCRC(string uncompressedImage)
-        {
-            try
-            {
+        protected bool CheckCRC(string uncompressedImage) {
+            try {
                 // get the index of the last percent symbol
                 int percentIndex = uncompressedImage.LastIndexOf('%');
 
@@ -1856,9 +1716,7 @@ namespace MeasurementComputing.DAQFlex
                     return false;
                 else
                     return true;
-            }
-            catch (Exception)
-            {
+            } catch (Exception) {
                 return false;
             }
         }
@@ -1869,17 +1727,13 @@ namespace MeasurementComputing.DAQFlex
         /// </summary>
         /// <param name="componentType">The component type</param>
         //=========================================================================================
-        internal void RestoreApiFlags(string componentType)
-        {
-            if (componentType == DaqComponents.AI || componentType == DaqComponents.AISCAN)
-            {
+        internal void RestoreApiFlags(string componentType) {
+            if (componentType == DaqComponents.AI || componentType == DaqComponents.AISCAN) {
                 if (Ai != null)
                     Ai.RestoreApiFlags();
                 else
                     System.Diagnostics.Debug.Assert(false, "Ai component is null");
-            }
-            else if (componentType == DaqComponents.AO || componentType == DaqComponents.AOSCAN)
-            {
+            } else if (componentType == DaqComponents.AO || componentType == DaqComponents.AOSCAN) {
                 if (Ao != null)
                     Ao.RestoreApiFlags();
                 else
@@ -1894,8 +1748,7 @@ namespace MeasurementComputing.DAQFlex
         /// </summary>
         /// <param name="errorCode">The pending error code</param>
         //==================================================================================================
-        internal void SetPendingInputScanError(ErrorCodes errorCode)
-        {
+        internal void SetPendingInputScanError(ErrorCodes errorCode) {
             PendingInputScanError = m_driverInterface.ErrorCode;
         }
 
@@ -1906,8 +1759,7 @@ namespace MeasurementComputing.DAQFlex
         /// </summary>
         /// <param name="errorCode">The pending error code</param>
         //==================================================================================================
-        internal void SetPendingOutputScanError(ErrorCodes errorCode)
-        {
+        internal void SetPendingOutputScanError(ErrorCodes errorCode) {
             PendingOutputScanError = m_driverInterface.ErrorCode;
         }
 
@@ -1917,10 +1769,8 @@ namespace MeasurementComputing.DAQFlex
         /// </summary>
         /// <param name="message">The device message</param>
         //==================================================================================================
-        internal void QueueDeviceMessage(string message)
-        {
-            if (message[0] != Constants.QUERY && message.Contains(Constants.EQUAL_SIGN))
-            {
+        internal void QueueDeviceMessage(string message) {
+            if (message[0] != Constants.QUERY && message.Contains(Constants.EQUAL_SIGN)) {
                 string property;
                 string value;
                 int equalIndex;
@@ -1928,8 +1778,7 @@ namespace MeasurementComputing.DAQFlex
                 property = MessageTranslator.GetPropertyName(message);
                 value = MessageTranslator.GetPropertyValue(message);
 
-                if (m_messageQueue.ContainsKey(property))
-                {
+                if (m_messageQueue.ContainsKey(property)) {
                     m_messageQueue.Remove(property);
                 }
 
@@ -1942,26 +1791,20 @@ namespace MeasurementComputing.DAQFlex
         /// Restores the device configuration
         /// </summary>
         //==================================================================================================
-        internal void RestoreDeviceConfiguration()
-        {
+        internal void RestoreDeviceConfiguration() {
             string msg;
 
-            try
-            {
-                foreach (KeyValuePair<string, string> kvp in m_messageQueue)
-                {
+            try {
+                foreach (KeyValuePair<string, string> kvp in m_messageQueue) {
                     msg = String.Format("{0}={1}", kvp.Key, kvp.Value);
                     SendMessageDirect(msg);
                 }
-            }
-            catch (Exception ex)
-            {
+            } catch (Exception ex) {
                 System.Diagnostics.Debug.Assert(false, ex.Message);
             }
         }
 
-        internal void DeviceCheckThread()
-        {
+        internal void DeviceCheckThread() {
             System.Diagnostics.Stopwatch sw = new System.Diagnostics.Stopwatch();
 
             bool deviceLost = false;
@@ -1972,14 +1815,10 @@ namespace MeasurementComputing.DAQFlex
             sw.Reset();
             sw.Start();
 
-            while (m_continueCheckingDevice)
-            {
-                if (sw.ElapsedMilliseconds > 5000)
-                {
-                    if (m_driverInterface.InputScanStatus == ScanState.Idle && m_driverInterface.OutputScanState == ScanState.Idle)
-                    {
-                        try
-                        {
+            while (m_continueCheckingDevice) {
+                if (sw.ElapsedMilliseconds > 5000) {
+                    if (m_driverInterface.InputScanStatus == ScanState.Idle && m_driverInterface.OutputScanState == ScanState.Idle) {
+                        try {
                             System.Diagnostics.Debug.WriteLine("Checking device");
 
                             SendMessage(Messages.DEV_ID_QUERY);
@@ -1987,18 +1826,13 @@ namespace MeasurementComputing.DAQFlex
                             sw.Reset();
                             sw.Start();
 
-                            if (deviceLost)
-                            {
+                            if (deviceLost) {
                                 RestoreDeviceConfiguration();
                                 deviceLost = false;
                             }
-                        }
-                        catch (DaqException dex)
-                        {
+                        } catch (DaqException dex) {
                             deviceLost = true;
-                        }
-                        catch (Exception ex)
-                        {
+                        } catch (Exception ex) {
                             System.Diagnostics.Debug.Assert(false, ex.Message);
                         }
                     }
@@ -2014,35 +1848,29 @@ namespace MeasurementComputing.DAQFlex
     /// Encapsulates calibration coefficients
     /// </summary>
     //============================================================
-    internal class CalCoeffs
-    {
+    internal class CalCoeffs {
         private double m_slope;
         private double m_offset;
 
-        internal CalCoeffs(double slope, double offset)
-        {
+        internal CalCoeffs(double slope, double offset) {
             m_slope = slope;
             m_offset = offset;
         }
 
-        internal double Slope
-        {
+        internal double Slope {
             get { return m_slope; }
         }
 
-        internal double Offset
-        {
+        internal double Offset {
             get { return m_offset; }
         }
     }
 
-    internal class Range
-    {
+    internal class Range {
         private double m_upperLimit = 0.0;
         private double m_lowerLimit = 0.0;
 
-        internal Range(double upperLimit, double lowerLimit)
-        {
+        internal Range(double upperLimit, double lowerLimit) {
             m_upperLimit = upperLimit;
             m_lowerLimit = lowerLimit;
         }
@@ -2052,8 +1880,7 @@ namespace MeasurementComputing.DAQFlex
         ///  The range's upper limit
         /// </summary>
         //========================================================================
-        internal double UpperLimit
-        {
+        internal double UpperLimit {
             get { return m_upperLimit; }
         }
 
@@ -2062,14 +1889,12 @@ namespace MeasurementComputing.DAQFlex
         /// The range's lower limit
         /// </summary>
         //========================================================================
-        internal double LowerLimit
-        {
+        internal double LowerLimit {
             get { return m_lowerLimit; }
         }
     }
 
-    internal struct ActiveChannels
-    {
+    internal struct ActiveChannels {
         internal int ChannelNumber;
         internal double UpperLimit;
         internal double LowerLimit;
@@ -2077,20 +1902,17 @@ namespace MeasurementComputing.DAQFlex
         internal double CalOffset;
     }
 
-    internal class TcTempLimits
-    {
+    internal class TcTempLimits {
         internal double LowerLimit;
         internal double UpperLimit;
 
-        internal TcTempLimits(double lowerLimit, double upperLimit)
-        {
+        internal TcTempLimits(double lowerLimit, double upperLimit) {
             LowerLimit = lowerLimit;
             UpperLimit = upperLimit;
         }
     }
 
-    public class AcquisitionInfo
-    {
+    public class AcquisitionInfo {
         /// <summary>
         /// this is the number of samples per channel per driver transfer
         /// </summary>

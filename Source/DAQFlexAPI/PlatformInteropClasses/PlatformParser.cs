@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Globalization;
 
 namespace MeasurementComputing.DAQFlex
 {
@@ -55,6 +56,7 @@ namespace MeasurementComputing.DAQFlex
                 return false;
             }
 #else
+            //return Double.TryParse(valueToParse, NumberStyles.AllowDecimalPoint, CultureInfo.CurrentCulture, out result);
             return Double.TryParse(valueToParse, out result);
 #endif
         }

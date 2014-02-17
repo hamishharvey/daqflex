@@ -33,13 +33,28 @@ namespace MeasurementComputing.DAQFlex
         public Usb2001TcAi(DaqDevice daqDevice, DeviceInfo deviceInfo)
             : base(daqDevice, deviceInfo, 1)
         {
+                // default is scale data...
             m_scaleData = true;
+                
+                // create thermocouple types...
+            m_tcTypes = new ThermocoupleTypes[m_maxChannels];
 
+            m_thermocouples = new Thermocouple[m_maxChannels];
+
+                // create an array for CJC values
+            m_cjcValues = new double[m_maxChannels];
+
+                // create an array of channel types...
             m_aiChannelType[0] = AiChannelTypes.Temperature;
-            m_tcType[0] = GetTcType(0);
 
-            if (m_tcType[0] != ThermocoupleTypes.NotSet)
-                m_thermocouple = Thermocouple.CreateThermocouple(m_tcType[0]);
+                // get the tc type...
+            m_tcTypes[0] = GetTcType(0);
+
+            if (m_tcTypes[0] != ThermocoupleTypes.NotSet)
+            {
+                    // create the thermocouple object...
+                m_thermocouples[0] = Thermocouple.CreateThermocouple(m_tcTypes[0]);
+            }
         }
 
         internal override void Initialize()
@@ -206,8 +221,8 @@ namespace MeasurementComputing.DAQFlex
         internal override ErrorCodes ProcessCJCMessage(ref string message)
         {
             string tcType = message.Substring(message.IndexOf(Constants.VALUE_RESOLVER) + 1);
-            m_tcType[0] = GetTcType(tcType);
-            m_thermocouple = Thermocouple.CreateThermocouple(m_tcType[0]);
+            m_tcTypes[0] = GetTcType(tcType);
+            m_thermocouples[0] = Thermocouple.CreateThermocouple(m_tcTypes[0]);
 
             return ErrorCodes.NoErrors;
         }
@@ -226,7 +241,7 @@ namespace MeasurementComputing.DAQFlex
 
             if (value == m_maxCount)
             {
-                if (m_tcType[0] == ThermocoupleTypes.TypeE)
+                if (m_tcTypes[0] == ThermocoupleTypes.TypeE)
                 {
                     double newValue = SwitchRange(PropertyValues.BIPPT14625V, value);
 

@@ -131,10 +131,13 @@ namespace AInScanWithCallback
         {
             try
             {
-                // Send the AI Range message
-                string rangeValue = rangeComboBox.SelectedItem.ToString();
-                string message = "AISCAN:RANGE=" + rangeValue;
-                Device.SendMessage(message);
+                // Send the AI Range message for devices that support programmable ranges
+                if (rangeComboBox.Items.Count > 1)
+                {
+                    string rangeValue = rangeComboBox.SelectedItem.ToString();
+                    string message = "AISCAN:RANGE=" + rangeValue;
+                    Device.SendMessage(message);
+                }
             }
             catch (Exception ex)
             {
