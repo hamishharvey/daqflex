@@ -560,6 +560,15 @@ namespace MeasurementComputing.DAQFlex
                 case (DeviceIDs.Usb1608GX2AoID):
                     deviceName = "USB-1608GX-2AO";
                     break;
+                case (DeviceIDs.Usb1608GID_2):
+                    deviceName = "USB-1608G";
+                    break;
+                case (DeviceIDs.Usb1608GXID_2):
+                    deviceName = "USB-1608GX";
+                    break;
+                case (DeviceIDs.Usb1608GX2AoID_2):
+                    deviceName = "USB-1608GX-2AO";
+                    break;
                 case (DeviceIDs.Usb201):
                     deviceName = "USB-201";
                     break;

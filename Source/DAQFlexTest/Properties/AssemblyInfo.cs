@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Measurement Computing")]
 [assembly: AssemblyProduct("FlexTest")]
-[assembly: AssemblyCopyright("© Measurement Computing Corporation 2013")]
+[assembly: AssemblyCopyright("� Measurement Computing Corporation 2013")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -32,7 +32,7 @@ using System.Runtime.InteropServices;
 // You can specify all the values or you can default the Build and Revision Numbers 
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("3.4.0.0")]
+[assembly: AssemblyVersion("3.4.2.0")]
 #if !WindowsCE
-[assembly: AssemblyFileVersion("3.4.0.0")]
+[assembly: AssemblyFileVersion("3.4.2.0")]
 #endif

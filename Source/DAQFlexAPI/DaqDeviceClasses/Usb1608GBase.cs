@@ -31,7 +31,7 @@ namespace MeasurementComputing.DAQFlex
     //===========================================================================
     internal class Usb1608GBase : DaqDevice
     {
-        protected const string m_fpgaFileName = "USB_1608G.rbf";
+        protected string m_fpgaFileName;// = "USB_1608G.rbf";
 
         protected byte fpgaDataRequest = 0x51;
 
@@ -44,6 +44,24 @@ namespace MeasurementComputing.DAQFlex
         internal Usb1608GBase(DeviceInfo deviceInfo)
             : base(deviceInfo, 0x7100)
         {
+            switch (deviceInfo.Pid)
+            {
+                case (0x110):
+                case (0x111):
+                case (0x112):
+                    {
+                        m_fpgaFileName = "USB_1608G.rbf";
+                        break;
+                    }
+                case (0x134):
+                case (0x135):
+                case (0x136):
+                    {
+                        m_fpgaFileName = "USB_1608G_2.rbf";
+                        break;
+                    }
+            }
+
             m_memLockAddr = 0x8000;
             m_memUnlockCode = 0xAA55;
             m_memLockCode = 0xFFFF;
